@@ -1,6 +1,35 @@
 import { Env } from "../shared/types";
 import { notFound } from "../shared/utils";
-import { handleHealth } from "./routes";
+import {
+  handleHealth,
+  listDomains,
+  getDomain,
+  createDomain,
+  updateDomain,
+  deleteDomain,
+  listCategories,
+  getCategory,
+  createCategory,
+  updateCategory,
+  deleteCategory,
+  listPlatforms,
+  getPlatform,
+  createPlatform,
+  updatePlatform,
+  deletePlatform,
+  listSocialChannels,
+  getSocialChannel,
+  createSocialChannel,
+  updateSocialChannel,
+  deleteSocialChannel,
+  listPromptTemplates,
+  getPromptTemplate,
+  createPromptTemplate,
+  createPromptVersion,
+  activatePromptVersion,
+  updatePromptTemplate,
+  deletePromptTemplate,
+} from "./routes";
 
 /**
  * API router — handles all requests under /api/*.
@@ -20,11 +49,110 @@ export async function handleApiRequest(
     return handleHealth(env);
   }
 
+  // ── Domains ───────────────────────────────────────────
+  if (path === "/api/domains" && method === "GET") {
+    return listDomains(request, env);
+  }
+  if (path === "/api/domains" && method === "POST") {
+    return createDomain(request, env);
+  }
+
+  const domainMatch = path.match(/^\/api\/domains\/([^/]+)$/);
+  if (domainMatch) {
+    const id = domainMatch[1];
+    if (method === "GET") return getDomain(env, id);
+    if (method === "PUT") return updateDomain(request, env, id);
+    if (method === "DELETE") return deleteDomain(env, id);
+  }
+
+  // ── Categories ────────────────────────────────────────
+  if (path === "/api/categories" && method === "GET") {
+    return listCategories(request, env);
+  }
+  if (path === "/api/categories" && method === "POST") {
+    return createCategory(request, env);
+  }
+
+  const categoryMatch = path.match(/^\/api\/categories\/([^/]+)$/);
+  if (categoryMatch) {
+    const id = categoryMatch[1];
+    if (method === "GET") return getCategory(env, id);
+    if (method === "PUT") return updateCategory(request, env, id);
+    if (method === "DELETE") return deleteCategory(env, id);
+  }
+
+  // ── Domain → Categories shortcut ─────────────────────
+  const domainCategoriesMatch = path.match(
+    /^\/api\/domains\/([^/]+)\/categories$/,
+  );
+  if (domainCategoriesMatch && method === "GET") {
+    const url = new URL(request.url);
+    url.searchParams.set("domain_id", domainCategoriesMatch[1]);
+    const syntheticRequest = new Request(url.toString(), request);
+    return listCategories(syntheticRequest, env);
+  }
+
+  // ── Platforms ─────────────────────────────────────────
+  if (path === "/api/platforms" && method === "GET") {
+    return listPlatforms(request, env);
+  }
+  if (path === "/api/platforms" && method === "POST") {
+    return createPlatform(request, env);
+  }
+
+  const platformMatch = path.match(/^\/api\/platforms\/([^/]+)$/);
+  if (platformMatch) {
+    const id = platformMatch[1];
+    if (method === "GET") return getPlatform(env, id);
+    if (method === "PUT") return updatePlatform(request, env, id);
+    if (method === "DELETE") return deletePlatform(env, id);
+  }
+
+  // ── Social Channels ───────────────────────────────────
+  if (path === "/api/social-channels" && method === "GET") {
+    return listSocialChannels(request, env);
+  }
+  if (path === "/api/social-channels" && method === "POST") {
+    return createSocialChannel(request, env);
+  }
+
+  const socialMatch = path.match(/^\/api\/social-channels\/([^/]+)$/);
+  if (socialMatch) {
+    const id = socialMatch[1];
+    if (method === "GET") return getSocialChannel(env, id);
+    if (method === "PUT") return updateSocialChannel(request, env, id);
+    if (method === "DELETE") return deleteSocialChannel(env, id);
+  }
+
+  // ── Prompt Templates ────────────────────────────────────
+  if (path === "/api/prompts" && method === "GET") {
+    return listPromptTemplates(request, env);
+  }
+  if (path === "/api/prompts" && method === "POST") {
+    return createPromptTemplate(request, env);
+  }
+
+  // POST /api/prompts/:id/version — create new version
+  const promptVersionMatch = path.match(/^\/api\/prompts\/([^/]+)\/version$/);
+  if (promptVersionMatch && method === "POST") {
+    return createPromptVersion(request, env, promptVersionMatch[1]);
+  }
+
+  // POST /api/prompts/:id/activate — activate a version
+  const promptActivateMatch = path.match(/^\/api\/prompts\/([^/]+)\/activate$/);
+  if (promptActivateMatch && method === "POST") {
+    return activatePromptVersion(env, promptActivateMatch[1]);
+  }
+
+  const promptMatch = path.match(/^\/api\/prompts\/([^/]+)$/);
+  if (promptMatch) {
+    const id = promptMatch[1];
+    if (method === "GET") return getPromptTemplate(env, id);
+    if (method === "PUT") return updatePromptTemplate(request, env, id);
+    if (method === "DELETE") return deletePromptTemplate(env, id);
+  }
+
   // ── Future API routes ─────────────────────────────────
-  // POST /api/domains
-  // GET  /api/domains
-  // POST /api/categories
-  // GET  /api/categories
   // POST /api/products
   // GET  /api/products
   // POST /api/workflow/run
