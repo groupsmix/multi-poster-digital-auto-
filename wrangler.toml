@@ -1,0 +1,35 @@
+name = "nexus"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+# ── D1 Database ──────────────────────────────────────────
+[[d1_databases]]
+binding = "DB"
+database_name = "nexus-db"
+database_id = "LOCAL_PLACEHOLDER"
+migrations_dir = "migrations"
+
+# ── KV Namespace ─────────────────────────────────────────
+[[kv_namespaces]]
+binding = "CACHE"
+id = "LOCAL_PLACEHOLDER"
+
+# ── R2 Bucket ────────────────────────────────────────────
+[[r2_buckets]]
+binding = "ASSETS_BUCKET"
+bucket_name = "nexus-assets"
+
+# ── Durable Objects ──────────────────────────────────────
+[durable_objects]
+bindings = [
+  { name = "WORKFLOW_COORDINATOR", class_name = "WorkflowCoordinator" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["WorkflowCoordinator"]
+
+# ── Environment Variables ────────────────────────────────
+[vars]
+ENVIRONMENT = "development"
+APP_NAME = "NEXUS"
