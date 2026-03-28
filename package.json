@@ -1,0 +1,20 @@
+{
+  "name": "nexus",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:migrate:local": "wrangler d1 migrations apply nexus-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply nexus-db --remote"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260317.1",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.2",
+    "wrangler": "^4.78.0"
+  }
+}
