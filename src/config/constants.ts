@@ -75,6 +75,7 @@ export const EXPORT_FORMATS = [
   "json",
   "markdown",
   "zip_manifest",
+  "csv",
 ] as const;
 
 export type ExportFormat = (typeof EXPORT_FORMATS)[number];

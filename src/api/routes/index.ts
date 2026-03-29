@@ -94,6 +94,8 @@ export {
 export {
   exportProduct,
   markReadyToPublish,
+  exportBulkConfig,
+  exportBulkAnalytics,
 } from "./exports";
 export {
   runResearch,
