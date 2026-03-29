@@ -59,6 +59,17 @@ export const TASK_LANES = [
 
 export type TaskLane = (typeof TASK_LANES)[number];
 
+/** Supported asset types for the asset library */
+export const ASSET_TYPES = [
+  "image",
+  "pdf",
+  "audio",
+  "video",
+  "general",
+] as const;
+
+export type AssetType = (typeof ASSET_TYPES)[number];
+
 /** Default limits — can be overridden via dashboard settings later */
 export const DEFAULTS = {
   /** Max retries per workflow step before marking failed */
