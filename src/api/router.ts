@@ -96,6 +96,16 @@ import {
   getReviewerOutput,
   triggerRegeneration,
   getRegenerationHistory,
+  getDashboard,
+  getProviderUsage,
+  getRoutingAudit,
+  getRunAnalytics,
+  getStepTimingAnalytics,
+  getApprovalAnalytics,
+  getCostAnalytics,
+  getDailyTrends,
+  createAnalyticsEvent,
+  listAnalyticsEvents,
 } from "./routes";
 
 /**
@@ -543,6 +553,54 @@ export async function handleApiRequest(
   const readyToPublishMatch = path.match(/^\/api\/products\/([^/]+)\/ready-to-publish$/);
   if (readyToPublishMatch && method === "POST") {
     return markReadyToPublish(env, readyToPublishMatch[1]);
+  }
+
+  // ── Analytics & Usage Tracking ─────────────────────────────
+  // Dashboard stats: GET /api/analytics/dashboard
+  if (path === "/api/analytics/dashboard" && method === "GET") {
+    return getDashboard(request, env);
+  }
+
+  // Provider usage: GET /api/analytics/providers
+  if (path === "/api/analytics/providers" && method === "GET") {
+    return getProviderUsage(request, env);
+  }
+
+  // Routing audit: GET /api/analytics/routing
+  if (path === "/api/analytics/routing" && method === "GET") {
+    return getRoutingAudit(request, env);
+  }
+
+  // Step timing: GET /api/analytics/step-timing
+  if (path === "/api/analytics/step-timing" && method === "GET") {
+    return getStepTimingAnalytics(request, env);
+  }
+
+  // Approval stats: GET /api/analytics/approvals
+  if (path === "/api/analytics/approvals" && method === "GET") {
+    return getApprovalAnalytics(request, env);
+  }
+
+  // Cost analytics: GET /api/analytics/costs
+  if (path === "/api/analytics/costs" && method === "GET") {
+    return getCostAnalytics(request, env);
+  }
+
+  // Daily trends: GET /api/analytics/trends
+  if (path === "/api/analytics/trends" && method === "GET") {
+    return getDailyTrends(request, env);
+  }
+
+  // Analytics events: GET/POST /api/analytics/events
+  if (path === "/api/analytics/events") {
+    if (method === "GET") return listAnalyticsEvents(request, env);
+    if (method === "POST") return createAnalyticsEvent(request, env);
+  }
+
+  // Run analytics: GET /api/analytics/runs/:runId
+  const runAnalyticsMatch = path.match(/^\/api\/analytics\/runs\/([^/]+)$/);
+  if (runAnalyticsMatch && method === "GET") {
+    return getRunAnalytics(env, runAnalyticsMatch[1]);
   }
 
   return notFound(`API route not found: ${method} ${path}`);

@@ -127,3 +127,15 @@ export {
   triggerRegeneration,
   getRegenerationHistory,
 } from "./reviewer";
+export {
+  getDashboard,
+  getProviderUsage,
+  getRoutingAudit,
+  getRunAnalytics,
+  getStepTimingAnalytics,
+  getApprovalAnalytics,
+  getCostAnalytics,
+  getDailyTrends,
+  createAnalyticsEvent,
+  listAnalyticsEvents,
+} from "./analytics";
