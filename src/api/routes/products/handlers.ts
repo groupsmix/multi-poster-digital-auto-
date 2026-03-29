@@ -145,21 +145,64 @@ export async function createProduct(
       if (!template) return badRequest("Workflow template not found.");
     }
 
-    // Validate target platforms if provided
+    // Validate and resolve target platforms
+    let platformIds: string[] = [];
     if (body.target_platforms_json) {
       if (typeof body.target_platforms_json === "string") {
         try {
-          JSON.parse(body.target_platforms_json as string);
+          platformIds = JSON.parse(body.target_platforms_json as string);
         } catch {
           return badRequest("target_platforms_json must be valid JSON.");
         }
       } else if (Array.isArray(body.target_platforms_json)) {
-        body.target_platforms_json = JSON.stringify(body.target_platforms_json);
+        platformIds = body.target_platforms_json as string[];
       }
+      if (!Array.isArray(platformIds) || platformIds.length === 0) {
+        return badRequest("target_platforms_json must be a non-empty array of platform IDs.");
+      }
+      // Validate each platform ID exists in D1
+      for (const pid of platformIds) {
+        const plat = await env.DB.prepare(
+          "SELECT id FROM platforms WHERE id = ? AND is_active = 1",
+        )
+          .bind(pid)
+          .first();
+        if (!plat) return badRequest(`Platform not found or inactive: ${pid}`);
+      }
+      body.target_platforms_json = JSON.stringify(platformIds);
     }
 
-    // Validate target social channels if provided
-    if (body.target_social_json) {
+    // Validate social_enabled + target social channels
+    const socialEnabled = !!body.social_enabled;
+    let socialIds: string[] = [];
+    if (socialEnabled) {
+      if (!body.target_social_json) {
+        return badRequest("target_social_json is required when social_enabled is true.");
+      }
+      if (typeof body.target_social_json === "string") {
+        try {
+          socialIds = JSON.parse(body.target_social_json as string);
+        } catch {
+          return badRequest("target_social_json must be valid JSON.");
+        }
+      } else if (Array.isArray(body.target_social_json)) {
+        socialIds = body.target_social_json as string[];
+      }
+      if (!Array.isArray(socialIds) || socialIds.length === 0) {
+        return badRequest("target_social_json must be a non-empty array of social channel IDs when social is enabled.");
+      }
+      // Validate each social channel ID exists in D1
+      for (const sid of socialIds) {
+        const ch = await env.DB.prepare(
+          "SELECT id FROM social_channels WHERE id = ? AND is_active = 1",
+        )
+          .bind(sid)
+          .first();
+        if (!ch) return badRequest(`Social channel not found or inactive: ${sid}`);
+      }
+      body.target_social_json = JSON.stringify(socialIds);
+    } else if (body.target_social_json) {
+      // Allow storing social channels even if not enabled, but still validate format
       if (typeof body.target_social_json === "string") {
         try {
           JSON.parse(body.target_social_json as string);

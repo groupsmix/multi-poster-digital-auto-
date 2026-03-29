@@ -53,15 +53,74 @@ export async function startWorkflowRun(
     }
 
     // Parse steps from template
-    let steps: Array<{
+    let templateSteps: Array<{
       step: string;
       role: string;
       required: boolean;
     }>;
     try {
-      steps = JSON.parse(template.steps_json as string);
+      templateSteps = JSON.parse(template.steps_json as string);
     } catch {
       return serverError("Invalid steps_json in workflow template.");
+    }
+
+    // Parse product's platform and social config
+    let targetPlatforms: string[] = [];
+    if (product.target_platforms_json) {
+      try {
+        targetPlatforms = JSON.parse(product.target_platforms_json as string);
+      } catch {
+        // ignore parse errors, treat as empty
+      }
+    }
+
+    const socialEnabled = !!(product.social_enabled);
+    let targetSocial: string[] = [];
+    if (socialEnabled && product.target_social_json) {
+      try {
+        targetSocial = JSON.parse(product.target_social_json as string);
+      } catch {
+        // ignore parse errors, treat as empty
+      }
+    }
+
+    // Expand template steps into concrete workflow steps
+    // "adapt" expands into one step per target platform
+    // "social" expands into one step per target social channel (if social_enabled)
+    const expandedSteps: Array<{
+      stepName: string;
+      role: string;
+      targetRef: string | null;
+    }> = [];
+
+    for (const ts of templateSteps) {
+      if (ts.step === "adapt") {
+        if (targetPlatforms.length === 0) {
+          // Skip adapt step if no platforms chosen and not required
+          if (!ts.required) continue;
+          // If required but no platforms, add a single generic adapt step
+          expandedSteps.push({ stepName: "adapt", role: ts.role, targetRef: null });
+        } else {
+          // One adapt step per platform
+          for (const pid of targetPlatforms) {
+            expandedSteps.push({ stepName: `adapt:${pid}`, role: ts.role, targetRef: pid });
+          }
+        }
+      } else if (ts.step === "social") {
+        if (!socialEnabled || targetSocial.length === 0) {
+          // Skip social step if not enabled or no channels and not required
+          if (!ts.required) continue;
+          if (!socialEnabled) continue; // social disabled = always skip
+          expandedSteps.push({ stepName: "social", role: ts.role, targetRef: null });
+        } else {
+          // One social step per channel
+          for (const sid of targetSocial) {
+            expandedSteps.push({ stepName: `social:${sid}`, role: ts.role, targetRef: sid });
+          }
+        }
+      } else {
+        expandedSteps.push({ stepName: ts.step, role: ts.role, targetRef: null });
+      }
     }
 
     const runId = generateId("run_");
@@ -76,20 +135,20 @@ export async function startWorkflowRun(
       .bind(runId, productId, templateId, now, now)
       .run();
 
-    // Create workflow steps from template
-    for (let i = 0; i < steps.length; i++) {
-      const step = steps[i];
+    // Create workflow steps from expanded list
+    for (let i = 0; i < expandedSteps.length; i++) {
+      const es = expandedSteps[i];
       const stepId = generateId("step_");
 
-      // Boss approval step is always pending (human action)
+      // First step starts running, rest are pending
       const stepStatus = i === 0 ? "running" : "pending";
 
       await env.DB.prepare(
         `INSERT INTO workflow_steps
-          (id, run_id, step_name, role_type, status, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+          (id, run_id, step_name, role_type, status, step_order, target_ref, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-        .bind(stepId, runId, step.step, step.role, stepStatus, now)
+        .bind(stepId, runId, es.stepName, es.role, stepStatus, i, es.targetRef, now)
         .run();
     }
 
@@ -108,7 +167,7 @@ export async function startWorkflowRun(
       .first();
 
     const createdSteps = await env.DB.prepare(
-      "SELECT * FROM workflow_steps WHERE run_id = ? ORDER BY created_at ASC",
+      "SELECT * FROM workflow_steps WHERE run_id = ? ORDER BY step_order ASC",
     )
       .bind(runId)
       .all();
@@ -208,7 +267,7 @@ export async function getWorkflowRun(
     if (!run) return notFound(`Workflow run not found: ${runId}`);
 
     const steps = await env.DB.prepare(
-      "SELECT * FROM workflow_steps WHERE run_id = ? ORDER BY created_at ASC",
+      "SELECT * FROM workflow_steps WHERE run_id = ? ORDER BY step_order ASC",
     )
       .bind(runId)
       .all();
@@ -269,7 +328,7 @@ export async function completeWorkflowStep(
 
     // Advance the next pending step to running
     const nextStep = await env.DB.prepare(
-      "SELECT id FROM workflow_steps WHERE run_id = ? AND status = 'pending' ORDER BY created_at ASC LIMIT 1",
+      "SELECT id FROM workflow_steps WHERE run_id = ? AND status = 'pending' ORDER BY step_order ASC LIMIT 1",
     )
       .bind(runId)
       .first();
@@ -283,7 +342,7 @@ export async function completeWorkflowStep(
     } else {
       // All steps completed — check if last step was boss approval
       const allSteps = await env.DB.prepare(
-        "SELECT * FROM workflow_steps WHERE run_id = ? ORDER BY created_at ASC",
+        "SELECT * FROM workflow_steps WHERE run_id = ? ORDER BY step_order ASC",
       )
         .bind(runId)
         .all();

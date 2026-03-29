@@ -208,6 +208,116 @@ describe("products/handlers", () => {
       const body = await res.json() as any;
       expect(body.error).toContain("target_platforms_json");
     });
+
+    it("returns 400 when platform ID not found in D1", async () => {
+      const { createProduct } = await import("../src/api/routes/products/handlers");
+      const stmtFn = (query: string) => {
+        if (query.includes("SELECT id FROM domains WHERE id")) {
+          return makeMockStmt({ firstResult: { id: "dom_1" } });
+        }
+        if (query.includes("SELECT id FROM platforms WHERE id")) {
+          return makeMockStmt({ firstResult: null });
+        }
+        return makeMockStmt();
+      };
+      const env = makeMockEnv(stmtFn);
+      const req = makeRequest("POST", "http://localhost/api/products", {
+        idea: "Test",
+        domain_id: "dom_1",
+        target_platforms_json: ["plat_nonexistent"],
+      });
+      const res = await createProduct(req, env as any);
+      expect(res.status).toBe(400);
+      const body = await res.json() as any;
+      expect(body.error).toContain("Platform not found");
+    });
+
+    it("returns 400 when social_enabled but no target_social_json", async () => {
+      const { createProduct } = await import("../src/api/routes/products/handlers");
+      const stmtFn = (query: string) => {
+        if (query.includes("SELECT id FROM domains WHERE id")) {
+          return makeMockStmt({ firstResult: { id: "dom_1" } });
+        }
+        return makeMockStmt();
+      };
+      const env = makeMockEnv(stmtFn);
+      const req = makeRequest("POST", "http://localhost/api/products", {
+        idea: "Test",
+        domain_id: "dom_1",
+        social_enabled: true,
+      });
+      const res = await createProduct(req, env as any);
+      expect(res.status).toBe(400);
+      const body = await res.json() as any;
+      expect(body.error).toContain("target_social_json is required");
+    });
+
+    it("returns 400 when social channel ID not found in D1", async () => {
+      const { createProduct } = await import("../src/api/routes/products/handlers");
+      const stmtFn = (query: string) => {
+        if (query.includes("SELECT id FROM domains WHERE id")) {
+          return makeMockStmt({ firstResult: { id: "dom_1" } });
+        }
+        if (query.includes("SELECT id FROM social_channels WHERE id")) {
+          return makeMockStmt({ firstResult: null });
+        }
+        return makeMockStmt();
+      };
+      const env = makeMockEnv(stmtFn);
+      const req = makeRequest("POST", "http://localhost/api/products", {
+        idea: "Test",
+        domain_id: "dom_1",
+        social_enabled: true,
+        target_social_json: ["sc_nonexistent"],
+      });
+      const res = await createProduct(req, env as any);
+      expect(res.status).toBe(400);
+      const body = await res.json() as any;
+      expect(body.error).toContain("Social channel not found");
+    });
+
+    it("creates product with validated platforms and social channels", async () => {
+      const { createProduct } = await import("../src/api/routes/products/handlers");
+      const created = {
+        id: "prod_new",
+        idea: "Full product",
+        domain_id: "dom_1",
+        status: "draft",
+        target_platforms_json: '["plat_etsy","plat_shopify"]',
+        social_enabled: 1,
+        target_social_json: '["sc_instagram"]',
+      };
+      const stmtFn = (query: string) => {
+        if (query.includes("SELECT id FROM domains WHERE id")) {
+          return makeMockStmt({ firstResult: { id: "dom_1" } });
+        }
+        if (query.includes("SELECT id FROM platforms WHERE id")) {
+          return makeMockStmt({ firstResult: { id: "plat_etsy" } });
+        }
+        if (query.includes("SELECT id FROM social_channels WHERE id")) {
+          return makeMockStmt({ firstResult: { id: "sc_instagram" } });
+        }
+        if (query.includes("INSERT INTO")) {
+          return makeMockStmt();
+        }
+        if (query.includes("SELECT * FROM products WHERE id")) {
+          return makeMockStmt({ firstResult: created });
+        }
+        return makeMockStmt();
+      };
+      const env = makeMockEnv(stmtFn);
+      const req = makeRequest("POST", "http://localhost/api/products", {
+        idea: "Full product",
+        domain_id: "dom_1",
+        target_platforms_json: ["plat_etsy", "plat_shopify"],
+        social_enabled: true,
+        target_social_json: ["sc_instagram"],
+      });
+      const res = await createProduct(req, env as any);
+      expect(res.status).toBe(201);
+      const body = await res.json() as any;
+      expect(body.data.social_enabled).toBe(1);
+    });
   });
 
   describe("updateProduct", () => {
@@ -434,6 +544,230 @@ describe("workflows/handlers", () => {
       expect(res.status).toBe(400);
       const body = await res.json() as any;
       expect(body.error).toContain("template not found");
+    });
+
+    it("expands adapt steps per platform", async () => {
+      const { startWorkflowRun } = await import("../src/api/routes/workflows/handlers");
+      const stepsJson = JSON.stringify([
+        { step: "create", role: "creator", required: true },
+        { step: "adapt", role: "adapter", required: false },
+        { step: "review", role: "reviewer", required: true },
+      ]);
+      const insertedSteps: Array<{ stepName: string; targetRef: string | null }> = [];
+      const stmtFn = (query: string) => {
+        if (query.includes("FROM products WHERE id")) {
+          return makeMockStmt({
+            firstResult: {
+              id: "prod_1",
+              workflow_template_id: "wft_standard",
+              target_platforms_json: '["plat_etsy","plat_shopify"]',
+              social_enabled: 0,
+              target_social_json: null,
+            },
+          });
+        }
+        if (query.includes("FROM workflow_runs WHERE product_id") && query.includes("IN")) {
+          return makeMockStmt({ firstResult: null });
+        }
+        if (query.includes("FROM workflow_templates WHERE id")) {
+          return makeMockStmt({
+            firstResult: { id: "wft_standard", steps_json: stepsJson },
+          });
+        }
+        if (query.includes("INSERT INTO workflow_steps")) {
+          const stmt = makeMockStmt();
+          stmt.bind = vi.fn((...args: unknown[]) => {
+            insertedSteps.push({ stepName: args[2] as string, targetRef: args[6] as string | null });
+            return stmt;
+          });
+          return stmt;
+        }
+        if (query.includes("FROM workflow_runs WHERE id")) {
+          return makeMockStmt({ firstResult: { id: "run_1", status: "running" } });
+        }
+        if (query.includes("FROM workflow_steps WHERE run_id")) {
+          return makeMockStmt({ allResults: [] });
+        }
+        return makeMockStmt();
+      };
+      const env = makeMockEnv(stmtFn);
+      const req = makeRequest("POST", "http://localhost/api/products/prod_1/workflows", {});
+      const res = await startWorkflowRun(req, env as any, "prod_1");
+      expect(res.status).toBe(201);
+      // Should have: create, adapt:plat_etsy, adapt:plat_shopify, review = 4 steps
+      expect(insertedSteps).toHaveLength(4);
+      expect(insertedSteps[0].stepName).toBe("create");
+      expect(insertedSteps[1].stepName).toBe("adapt:plat_etsy");
+      expect(insertedSteps[1].targetRef).toBe("plat_etsy");
+      expect(insertedSteps[2].stepName).toBe("adapt:plat_shopify");
+      expect(insertedSteps[2].targetRef).toBe("plat_shopify");
+      expect(insertedSteps[3].stepName).toBe("review");
+    });
+
+    it("expands social steps per channel when social_enabled", async () => {
+      const { startWorkflowRun } = await import("../src/api/routes/workflows/handlers");
+      const stepsJson = JSON.stringify([
+        { step: "create", role: "creator", required: true },
+        { step: "social", role: "social", required: false },
+        { step: "approve", role: "boss", required: true },
+      ]);
+      const insertedSteps: Array<{ stepName: string; targetRef: string | null }> = [];
+      const stmtFn = (query: string) => {
+        if (query.includes("FROM products WHERE id")) {
+          return makeMockStmt({
+            firstResult: {
+              id: "prod_1",
+              workflow_template_id: "wft_standard",
+              target_platforms_json: null,
+              social_enabled: 1,
+              target_social_json: '["sc_instagram","sc_tiktok"]',
+            },
+          });
+        }
+        if (query.includes("FROM workflow_runs WHERE product_id") && query.includes("IN")) {
+          return makeMockStmt({ firstResult: null });
+        }
+        if (query.includes("FROM workflow_templates WHERE id")) {
+          return makeMockStmt({
+            firstResult: { id: "wft_standard", steps_json: stepsJson },
+          });
+        }
+        if (query.includes("INSERT INTO workflow_steps")) {
+          const stmt = makeMockStmt();
+          stmt.bind = vi.fn((...args: unknown[]) => {
+            insertedSteps.push({ stepName: args[2] as string, targetRef: args[6] as string | null });
+            return stmt;
+          });
+          return stmt;
+        }
+        if (query.includes("FROM workflow_runs WHERE id")) {
+          return makeMockStmt({ firstResult: { id: "run_1", status: "running" } });
+        }
+        if (query.includes("FROM workflow_steps WHERE run_id")) {
+          return makeMockStmt({ allResults: [] });
+        }
+        return makeMockStmt();
+      };
+      const env = makeMockEnv(stmtFn);
+      const req = makeRequest("POST", "http://localhost/api/products/prod_1/workflows", {});
+      const res = await startWorkflowRun(req, env as any, "prod_1");
+      expect(res.status).toBe(201);
+      // Should have: create, social:sc_instagram, social:sc_tiktok, approve = 4 steps
+      expect(insertedSteps).toHaveLength(4);
+      expect(insertedSteps[0].stepName).toBe("create");
+      expect(insertedSteps[1].stepName).toBe("social:sc_instagram");
+      expect(insertedSteps[1].targetRef).toBe("sc_instagram");
+      expect(insertedSteps[2].stepName).toBe("social:sc_tiktok");
+      expect(insertedSteps[2].targetRef).toBe("sc_tiktok");
+      expect(insertedSteps[3].stepName).toBe("approve");
+    });
+
+    it("skips social steps when social_enabled is false", async () => {
+      const { startWorkflowRun } = await import("../src/api/routes/workflows/handlers");
+      const stepsJson = JSON.stringify([
+        { step: "create", role: "creator", required: true },
+        { step: "social", role: "social", required: false },
+        { step: "approve", role: "boss", required: true },
+      ]);
+      const insertedSteps: Array<{ stepName: string }> = [];
+      const stmtFn = (query: string) => {
+        if (query.includes("FROM products WHERE id")) {
+          return makeMockStmt({
+            firstResult: {
+              id: "prod_1",
+              workflow_template_id: "wft_standard",
+              target_platforms_json: null,
+              social_enabled: 0,
+              target_social_json: null,
+            },
+          });
+        }
+        if (query.includes("FROM workflow_runs WHERE product_id") && query.includes("IN")) {
+          return makeMockStmt({ firstResult: null });
+        }
+        if (query.includes("FROM workflow_templates WHERE id")) {
+          return makeMockStmt({
+            firstResult: { id: "wft_standard", steps_json: stepsJson },
+          });
+        }
+        if (query.includes("INSERT INTO workflow_steps")) {
+          const stmt = makeMockStmt();
+          stmt.bind = vi.fn((...args: unknown[]) => {
+            insertedSteps.push({ stepName: args[2] as string });
+            return stmt;
+          });
+          return stmt;
+        }
+        if (query.includes("FROM workflow_runs WHERE id")) {
+          return makeMockStmt({ firstResult: { id: "run_1", status: "running" } });
+        }
+        if (query.includes("FROM workflow_steps WHERE run_id")) {
+          return makeMockStmt({ allResults: [] });
+        }
+        return makeMockStmt();
+      };
+      const env = makeMockEnv(stmtFn);
+      const req = makeRequest("POST", "http://localhost/api/products/prod_1/workflows", {});
+      const res = await startWorkflowRun(req, env as any, "prod_1");
+      expect(res.status).toBe(201);
+      // Should have: create, approve = 2 steps (social skipped)
+      expect(insertedSteps).toHaveLength(2);
+      expect(insertedSteps[0].stepName).toBe("create");
+      expect(insertedSteps[1].stepName).toBe("approve");
+    });
+
+    it("skips adapt steps when no platforms chosen", async () => {
+      const { startWorkflowRun } = await import("../src/api/routes/workflows/handlers");
+      const stepsJson = JSON.stringify([
+        { step: "create", role: "creator", required: true },
+        { step: "adapt", role: "adapter", required: false },
+        { step: "review", role: "reviewer", required: true },
+      ]);
+      const insertedSteps: Array<{ stepName: string }> = [];
+      const stmtFn = (query: string) => {
+        if (query.includes("FROM products WHERE id")) {
+          return makeMockStmt({
+            firstResult: {
+              id: "prod_1",
+              workflow_template_id: "wft_standard",
+              target_platforms_json: null,
+              social_enabled: 0,
+              target_social_json: null,
+            },
+          });
+        }
+        if (query.includes("FROM workflow_runs WHERE product_id") && query.includes("IN")) {
+          return makeMockStmt({ firstResult: null });
+        }
+        if (query.includes("FROM workflow_templates WHERE id")) {
+          return makeMockStmt({
+            firstResult: { id: "wft_standard", steps_json: stepsJson },
+          });
+        }
+        if (query.includes("INSERT INTO workflow_steps")) {
+          const stmt = makeMockStmt();
+          stmt.bind = vi.fn((...args: unknown[]) => {
+            insertedSteps.push({ stepName: args[2] as string });
+            return stmt;
+          });
+          return stmt;
+        }
+        if (query.includes("FROM workflow_runs WHERE id")) {
+          return makeMockStmt({ firstResult: { id: "run_1", status: "running" } });
+        }
+        if (query.includes("FROM workflow_steps WHERE run_id")) {
+          return makeMockStmt({ allResults: [] });
+        }
+        return makeMockStmt();
+      };
+      const env = makeMockEnv(stmtFn);
+      const req = makeRequest("POST", "http://localhost/api/products/prod_1/workflows", {});
+      const res = await startWorkflowRun(req, env as any, "prod_1");
+      expect(res.status).toBe(201);
+      // Should have: create, review = 2 steps (adapt skipped)
+      expect(insertedSteps).toHaveLength(2);
+      expect(insertedSteps[0].stepName).toBe("create");
+      expect(insertedSteps[1].stepName).toBe("review");
     });
   });
 
