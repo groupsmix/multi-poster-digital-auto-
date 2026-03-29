@@ -42,6 +42,7 @@ import {
   listTaskLanes,
   getTaskLane,
   resolveTaskLane,
+  executeProviderChain,
   listProducts,
   getProduct,
   createProduct,
@@ -212,6 +213,11 @@ export async function handleApiRequest(
   const resolveMatch = path.match(/^\/api\/providers\/resolve\/([^/]+)$/);
   if (resolveMatch && method === "GET") {
     return resolveTaskLane(env, resolveMatch[1]);
+  }
+
+  // Execute provider chain: POST /api/providers/execute
+  if (path === "/api/providers/execute" && method === "POST") {
+    return executeProviderChain(request, env);
   }
 
   // Provider CRUD

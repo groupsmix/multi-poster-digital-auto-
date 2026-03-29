@@ -12,4 +12,5 @@ export {
   listTaskLanes,
   getTaskLane,
   resolveTaskLane,
+  executeProviderChain,
 } from "./handlers";
