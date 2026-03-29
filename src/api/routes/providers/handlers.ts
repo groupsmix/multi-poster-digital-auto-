@@ -9,6 +9,8 @@ import {
   parseJsonBody,
 } from "../../../shared/utils";
 import type { FieldRule } from "../../../shared/utils";
+import { executeWithRouting } from "../../../providers";
+import type { TaskLane } from "../../../config";
 
 // ── Valid states and lanes (kept in sync with shared/types) ──
 
@@ -714,6 +716,91 @@ export async function resolveTaskLane(
   } catch (err) {
     console.error("[providers/resolve]", err);
     return serverError("Failed to resolve task lane.");
+  }
+}
+
+// ── EXECUTE — run a prompt through the provider chain ─────
+
+export async function executeProviderChain(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const body = await parseJsonBody(request);
+  if (!body) return badRequest("Invalid JSON body.");
+
+  const lane = body.task_lane as string | undefined;
+  if (!lane) return badRequest("task_lane is required.");
+
+  if (!VALID_TASK_LANES.includes(lane as typeof VALID_TASK_LANES[number])) {
+    return badRequest(
+      `Invalid task_lane "${lane}". Must be one of: ${VALID_TASK_LANES.join(", ")}`,
+    );
+  }
+
+  const prompt = body.prompt as string | undefined;
+  if (!prompt) return badRequest("prompt is required.");
+
+  const systemPrompt = (body.system_prompt as string) || undefined;
+  const maxTokens = typeof body.max_tokens === "number" ? body.max_tokens : undefined;
+  const temperature = typeof body.temperature === "number" ? body.temperature : undefined;
+
+  try {
+    const result = await executeWithRouting(env, lane as TaskLane, {
+      lane: lane as TaskLane,
+      prompt,
+      systemPrompt,
+      maxTokens,
+      temperature,
+    });
+
+    // Persist call log to D1
+    for (let i = 0; i < result.attempts.length; i++) {
+      const attempt = result.attempts[i];
+      const logId = generateId("pcl_");
+      try {
+        await env.DB.prepare(
+          `INSERT INTO provider_call_log
+             (id, run_id, step_id, task_lane, provider_id, provider_name, model, outcome, error, latency_ms, attempt_order)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+          .bind(
+            logId,
+            (body.run_id as string) || null,
+            (body.step_id as string) || null,
+            lane,
+            attempt.providerId,
+            attempt.providerName,
+            attempt.model,
+            attempt.outcome,
+            attempt.error || null,
+            attempt.latencyMs || null,
+            i,
+          )
+          .run();
+      } catch (logErr) {
+        console.error("[providers/execute] Failed to log attempt:", logErr);
+      }
+    }
+
+    if (!result.success) {
+      return json(
+        {
+          success: false,
+          message: "All providers exhausted. No successful response.",
+          attempts: result.attempts,
+        },
+        503,
+      );
+    }
+
+    return json({
+      success: true,
+      response: result.response,
+      attempts: result.attempts,
+    });
+  } catch (err) {
+    console.error("[providers/execute]", err);
+    return serverError("Failed to execute provider chain.");
   }
 }
 

@@ -21,4 +21,15 @@ export interface Env {
   // ── Vars (set in wrangler.toml [vars] or .dev.vars) ──
   ENVIRONMENT: string;
   APP_NAME: string;
+
+  // ── AI Provider secrets (set via wrangler secret or .dev.vars) ──
+  TAVILY_API_KEY?: string;
+  EXA_API_KEY?: string;
+  GEMINI_API_KEY?: string;
+  GROQ_API_KEY?: string;
+  OPENAI_API_KEY?: string;
+  ANTHROPIC_API_KEY?: string;
+
+  // ── Cloudflare Workers AI binding (optional) ────────────
+  AI?: unknown;
 }

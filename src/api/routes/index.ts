@@ -50,6 +50,7 @@ export {
   listTaskLanes,
   getTaskLane,
   resolveTaskLane,
+  executeProviderChain,
 } from "./providers";
 export {
   listProducts,
