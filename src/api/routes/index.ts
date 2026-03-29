@@ -83,3 +83,10 @@ export {
   listProductRevisions,
   getProductVersionHistory,
 } from "./reviews";
+export {
+  listAssets,
+  listProductAssets,
+  getAsset,
+  uploadAsset,
+  deleteAsset,
+} from "./assets";

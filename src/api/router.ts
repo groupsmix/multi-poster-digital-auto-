@@ -68,6 +68,11 @@ import {
   listReviewComments,
   listProductRevisions,
   getProductVersionHistory,
+  listAssets,
+  listProductAssets,
+  getAsset,
+  uploadAsset,
+  deleteAsset,
 } from "./routes";
 
 /**
@@ -366,9 +371,26 @@ export async function handleApiRequest(
     return getReview(env, reviewDetailMatch[1]);
   }
 
-  // ── Future API routes ─────────────────────────────────
-  // GET  /api/assets
-  // ... added in future tasks
+  // ── Assets ──────────────────────────────────────────────
+  if (path === "/api/assets" && method === "GET") {
+    return listAssets(request, env);
+  }
+  if (path === "/api/assets" && method === "POST") {
+    return uploadAsset(request, env);
+  }
+
+  const assetMatch = path.match(/^\/api\/assets\/([^/]+)$/);
+  if (assetMatch) {
+    const id = assetMatch[1];
+    if (method === "GET") return getAsset(env, id);
+    if (method === "DELETE") return deleteAsset(env, id);
+  }
+
+  // Product assets: /api/products/:id/assets
+  const productAssetsMatch = path.match(/^\/api\/products\/([^/]+)\/assets$/);
+  if (productAssetsMatch && method === "GET") {
+    return listProductAssets(env, productAssetsMatch[1]);
+  }
 
   return notFound(`API route not found: ${method} ${path}`);
 }

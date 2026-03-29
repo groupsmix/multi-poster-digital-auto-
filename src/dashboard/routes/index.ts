@@ -1,6 +1,6 @@
 import { Env } from "../../shared/types";
 import { json, notFound, serverError } from "../../shared/utils";
-import { APP } from "../../config";
+import { APP, ASSET_TYPES } from "../../config";
 
 /**
  * Dashboard shell router — handles all requests under /dashboard/*.
@@ -82,10 +82,21 @@ export async function handleDashboardRequest(
     return handleDashboardProductHistory(env, productHistoryMatch[1]);
   }
 
+  // ── Assets Library ────────────────────────────────────
+  if (path === "/dashboard/assets" || path === "/dashboard/assets/") {
+    return handleDashboardAssets(env);
+  }
+
+  const assetDetailMatch = path.match(
+    /^\/dashboard\/assets\/([^/]+)$/,
+  );
+  if (assetDetailMatch) {
+    return handleDashboardAssetDetail(env, assetDetailMatch[1]);
+  }
+
   // ── Placeholder for remaining sub-routes ────────────────
   const subRoutes = [
     "categories",
-    "assets",
     "publish",
     "settings",
   ];
@@ -809,4 +820,113 @@ function getAvailableActions(
   };
 
   return actions;
+}
+
+// ── Assets Library ──────────────────────────────────────────
+
+async function handleDashboardAssets(env: Env): Promise<Response> {
+  try {
+    const assets = await env.DB.prepare(
+      "SELECT * FROM assets WHERE is_active = 1 ORDER BY created_at DESC",
+    ).all();
+
+    // Group by type
+    const byType: Record<string, unknown[]> = {};
+    for (const row of assets.results) {
+      const type = row.type as string;
+      if (!byType[type]) byType[type] = [];
+      byType[type].push(row);
+    }
+
+    // Group by product
+    const byProduct: Record<string, unknown[]> = {};
+    for (const row of assets.results) {
+      const productId = (row.product_id as string) || "unlinked";
+      if (!byProduct[productId]) byProduct[productId] = [];
+      byProduct[productId].push(row);
+    }
+
+    return json({
+      app: APP.NAME,
+      section: "assets",
+      message: "Asset Library — all assets grouped by type and product.",
+      assets: assets.results,
+      by_type: byType,
+      by_product: byProduct,
+      total: assets.results.length,
+      supported_types: ASSET_TYPES,
+      type_counts: Object.fromEntries(
+        ASSET_TYPES.map((t) => [t, (byType[t] || []).length]),
+      ),
+      api: {
+        list: "GET /api/assets",
+        list_by_type: "GET /api/assets?type=image",
+        list_by_product: "GET /api/products/:id/assets",
+        get: "GET /api/assets/:id",
+        upload: "POST /api/assets (multipart/form-data or application/json)",
+        delete: "DELETE /api/assets/:id",
+      },
+    });
+  } catch (err) {
+    console.error("[dashboard/assets]", err);
+    return serverError("Failed to load assets.");
+  }
+}
+
+// ── Asset Detail ────────────────────────────────────────────
+
+async function handleDashboardAssetDetail(
+  env: Env,
+  id: string,
+): Promise<Response> {
+  try {
+    const asset = await env.DB.prepare(
+      "SELECT * FROM assets WHERE id = ? AND is_active = 1",
+    )
+      .bind(id)
+      .first();
+
+    if (!asset) {
+      return notFound(`Asset not found: ${id}`);
+    }
+
+    // Fetch product info if linked
+    let product = null;
+    if (asset.product_id) {
+      product = await env.DB.prepare(
+        "SELECT id, idea, status, domain_id FROM products WHERE id = ?",
+      )
+        .bind(asset.product_id)
+        .first();
+    }
+
+    // Fetch sibling assets (same product)
+    let siblings: unknown[] = [];
+    if (asset.product_id) {
+      const siblingResult = await env.DB.prepare(
+        "SELECT id, filename, type, mime_type, file_size, created_at FROM assets WHERE product_id = ? AND is_active = 1 AND id != ? ORDER BY created_at DESC",
+      )
+        .bind(asset.product_id, id)
+        .all();
+      siblings = siblingResult.results;
+    }
+
+    return json({
+      app: APP.NAME,
+      section: "asset-detail",
+      asset,
+      product,
+      siblings,
+      sibling_count: siblings.length,
+      api: {
+        delete: `DELETE /api/assets/${id}`,
+        product_assets: asset.product_id
+          ? `GET /api/products/${asset.product_id}/assets`
+          : null,
+      },
+    });
+  } catch (err) {
+    console.error("[dashboard/asset-detail]", err);
+    return serverError("Failed to load asset detail.");
+  }
 }
