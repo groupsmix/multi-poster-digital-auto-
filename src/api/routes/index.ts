@@ -101,3 +101,23 @@ export {
   getResearchOutput,
   listResearchOutputs,
 } from "./researcher";
+export {
+  runCreator,
+  getProductCreation,
+  getCreationOutput,
+} from "./creator";
+export {
+  runPlatformAdapter,
+  getProductVariants as getProductPlatformVariants,
+  getVariantById,
+} from "./platform-adapter";
+export {
+  runMarketing,
+  getProductMarketing,
+  getMarketingOutput,
+} from "./marketing";
+export {
+  runSocial,
+  getProductSocialVariants,
+  getSocialVariantById,
+} from "./social";
