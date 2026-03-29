@@ -51,12 +51,24 @@ export async function handleDashboardRequest(
     return handleDashboardRouter(env);
   }
 
-  // ── Placeholder for all other sub-routes ──────────────
+  // ── Products ─────────────────────────────────────────────
+  if (path === "/dashboard/products" || path === "/dashboard/products/") {
+    return handleDashboardProducts(env);
+  }
+
+  // ── Workflows ───────────────────────────────────────────
+  if (path === "/dashboard/workflows" || path === "/dashboard/workflows/") {
+    return handleDashboardWorkflows(env);
+  }
+
+  // ── Reviews ─────────────────────────────────────────────
+  if (path === "/dashboard/reviews" || path === "/dashboard/reviews/") {
+    return handleDashboardReviews(env);
+  }
+
+  // ── Placeholder for remaining sub-routes ────────────────
   const subRoutes = [
     "categories",
-    "products",
-    "workflows",
-    "reviews",
     "assets",
     "publish",
     "settings",
@@ -346,5 +358,164 @@ async function handleDashboardPrompts(env: Env): Promise<Response> {
   } catch (err) {
     console.error("[dashboard/prompts]", err);
     return serverError("Failed to load prompt templates.");
+  }
+}
+
+// ── Products ───────────────────────────────────────────────
+
+async function handleDashboardProducts(env: Env): Promise<Response> {
+  try {
+    const products = await env.DB.prepare(
+      `SELECT p.*, d.name as domain_name, c.name as category_name
+       FROM products p
+       LEFT JOIN domains d ON p.domain_id = d.id
+       LEFT JOIN categories c ON p.category_id = c.id
+       WHERE p.is_active = 1
+       ORDER BY p.updated_at DESC`,
+    ).all();
+
+    // Group by status for dashboard view
+    const byStatus: Record<string, unknown[]> = {};
+    for (const row of products.results) {
+      const status = row.status as string;
+      if (!byStatus[status]) byStatus[status] = [];
+      byStatus[status].push(row);
+    }
+
+    return json({
+      app: APP.NAME,
+      section: "products",
+      message: "Product pipeline — all products grouped by status.",
+      products: products.results,
+      by_status: byStatus,
+      total: products.results.length,
+      statuses: [
+        "draft",
+        "queued",
+        "running",
+        "waiting_for_review",
+        "rejected",
+        "revision_requested",
+        "approved",
+        "ready_to_publish",
+        "publishing",
+        "published",
+        "archived",
+        "failed",
+      ],
+      api: {
+        list: "GET /api/products",
+        create: "POST /api/products",
+        get: "GET /api/products/:id",
+        update: "PUT /api/products/:id",
+        delete: "DELETE /api/products/:id",
+        variants: "GET /api/products/:id/variants",
+        create_variant: "POST /api/products/:id/variants",
+        start_workflow: "POST /api/products/:id/workflows",
+      },
+    });
+  } catch (err) {
+    console.error("[dashboard/products]", err);
+    return serverError("Failed to load products.");
+  }
+}
+
+// ── Workflows ──────────────────────────────────────────────
+
+async function handleDashboardWorkflows(env: Env): Promise<Response> {
+  try {
+    const runs = await env.DB.prepare(
+      `SELECT wr.*, p.idea as product_idea, wt.name as template_name
+       FROM workflow_runs wr
+       JOIN products p ON wr.product_id = p.id
+       LEFT JOIN workflow_templates wt ON wr.workflow_template_id = wt.id
+       ORDER BY wr.started_at DESC
+       LIMIT 50`,
+    ).all();
+
+    // Group by status
+    const byStatus: Record<string, unknown[]> = {};
+    for (const row of runs.results) {
+      const status = row.status as string;
+      if (!byStatus[status]) byStatus[status] = [];
+      byStatus[status].push(row);
+    }
+
+    return json({
+      app: APP.NAME,
+      section: "workflows",
+      message: "Workflow runs — recent runs grouped by status.",
+      runs: runs.results,
+      by_status: byStatus,
+      total: runs.results.length,
+      run_statuses: [
+        "queued",
+        "running",
+        "completed",
+        "failed",
+        "failed_partial",
+        "cancelled",
+      ],
+      api: {
+        list: "GET /api/workflows",
+        get: "GET /api/workflows/:id",
+        start: "POST /api/products/:id/workflows",
+        complete_step: "POST /api/workflows/:runId/steps/:stepId/complete",
+        fail_step: "POST /api/workflows/:runId/steps/:stepId/fail",
+      },
+    });
+  } catch (err) {
+    console.error("[dashboard/workflows]", err);
+    return serverError("Failed to load workflow runs.");
+  }
+}
+
+// ── Reviews ────────────────────────────────────────────────
+
+async function handleDashboardReviews(env: Env): Promise<Response> {
+  try {
+    const reviews = await env.DB.prepare(
+      `SELECT r.*, p.idea as product_idea, p.status as product_status
+       FROM reviews r
+       JOIN products p ON r.product_id = p.id
+       ORDER BY r.created_at DESC
+       LIMIT 50`,
+    ).all();
+
+    // Group by approval_status
+    const byStatus: Record<string, unknown[]> = {};
+    for (const row of reviews.results) {
+      const status = row.approval_status as string;
+      if (!byStatus[status]) byStatus[status] = [];
+      byStatus[status].push(row);
+    }
+
+    const pendingCount = (byStatus["pending"] || []).length;
+
+    return json({
+      app: APP.NAME,
+      section: "reviews",
+      message: "Boss Review Center — approve, reject, or request revisions.",
+      reviews: reviews.results,
+      by_status: byStatus,
+      total: reviews.results.length,
+      pending_count: pendingCount,
+      approval_statuses: [
+        "pending",
+        "approved",
+        "rejected",
+        "revision_requested",
+      ],
+      api: {
+        list_pending: "GET /api/reviews",
+        create: "POST /api/products/:id/reviews",
+        approve: "POST /api/reviews/:id/approve",
+        reject: "POST /api/reviews/:id/reject",
+        revision: "POST /api/reviews/:id/revision",
+      },
+    });
+  } catch (err) {
+    console.error("[dashboard/reviews]", err);
+    return serverError("Failed to load reviews.");
   }
 }

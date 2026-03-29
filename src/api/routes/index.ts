@@ -51,3 +51,30 @@ export {
   getTaskLane,
   resolveTaskLane,
 } from "./providers";
+export {
+  listProducts,
+  getProduct,
+  createProduct,
+  updateProduct,
+  deleteProduct,
+  listProductVariants,
+  createProductVariant,
+  updateVariant,
+  deleteVariant,
+} from "./products";
+export {
+  startWorkflowRun,
+  listWorkflowRuns,
+  listProductWorkflowRuns,
+  getWorkflowRun,
+  completeWorkflowStep,
+  failWorkflowStep,
+} from "./workflows";
+export {
+  createReview,
+  listProductReviews,
+  approveReview,
+  rejectReview,
+  requestRevision,
+  listPendingReviews,
+} from "./reviews";
