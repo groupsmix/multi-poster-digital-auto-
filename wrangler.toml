@@ -6,13 +6,13 @@ compatibility_date = "2024-12-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "nexus-db"
-database_id = "LOCAL_PLACEHOLDER"
+database_id = "f73cd60b-1baa-4e80-8e13-afb88960051d"
 migrations_dir = "migrations"
 
 # ── KV Namespace ─────────────────────────────────────────
 [[kv_namespaces]]
 binding = "CACHE"
-id = "LOCAL_PLACEHOLDER"
+id = "9f336b013df04301894a947ab2bff16a"
 
 # ── R2 Bucket ────────────────────────────────────────────
 [[r2_buckets]]
