@@ -42,6 +42,27 @@ import {
   listTaskLanes,
   getTaskLane,
   resolveTaskLane,
+  listProducts,
+  getProduct,
+  createProduct,
+  updateProduct,
+  deleteProduct,
+  listProductVariants,
+  createProductVariant,
+  updateVariant,
+  deleteVariant,
+  startWorkflowRun,
+  listWorkflowRuns,
+  listProductWorkflowRuns,
+  getWorkflowRun,
+  completeWorkflowStep,
+  failWorkflowStep,
+  createReview,
+  listProductReviews,
+  approveReview,
+  rejectReview,
+  requestRevision,
+  listPendingReviews,
 } from "./routes";
 
 /**
@@ -225,12 +246,96 @@ export async function handleApiRequest(
     if (method === "DELETE") return deleteProvider(env, id);
   }
 
+  // ── Products ────────────────────────────────────────────
+  if (path === "/api/products" && method === "GET") {
+    return listProducts(request, env);
+  }
+  if (path === "/api/products" && method === "POST") {
+    return createProduct(request, env);
+  }
+
+  // Product variants: /api/products/:id/variants
+  const productVariantsMatch = path.match(/^\/api\/products\/([^/]+)\/variants$/);
+  if (productVariantsMatch) {
+    const productId = productVariantsMatch[1];
+    if (method === "GET") return listProductVariants(env, productId);
+    if (method === "POST") return createProductVariant(request, env, productId);
+  }
+
+  // Product workflow runs: /api/products/:id/workflows
+  const productWorkflowsMatch = path.match(/^\/api\/products\/([^/]+)\/workflows$/);
+  if (productWorkflowsMatch) {
+    const productId = productWorkflowsMatch[1];
+    if (method === "GET") return listProductWorkflowRuns(env, productId);
+    if (method === "POST") return startWorkflowRun(request, env, productId);
+  }
+
+  // Product reviews: /api/products/:id/reviews
+  const productReviewsMatch = path.match(/^\/api\/products\/([^/]+)\/reviews$/);
+  if (productReviewsMatch) {
+    const productId = productReviewsMatch[1];
+    if (method === "GET") return listProductReviews(env, productId);
+    if (method === "POST") return createReview(request, env, productId);
+  }
+
+  const productMatch = path.match(/^\/api\/products\/([^/]+)$/);
+  if (productMatch) {
+    const id = productMatch[1];
+    if (method === "GET") return getProduct(env, id);
+    if (method === "PUT") return updateProduct(request, env, id);
+    if (method === "DELETE") return deleteProduct(env, id);
+  }
+
+  // ── Variants (standalone) ──────────────────────────────
+  const variantMatch = path.match(/^\/api\/variants\/([^/]+)$/);
+  if (variantMatch) {
+    const id = variantMatch[1];
+    if (method === "PUT") return updateVariant(request, env, id);
+    if (method === "DELETE") return deleteVariant(env, id);
+  }
+
+  // ── Workflow Runs ──────────────────────────────────────
+  if (path === "/api/workflows" && method === "GET") {
+    return listWorkflowRuns(request, env);
+  }
+
+  // Workflow step actions: /api/workflows/:runId/steps/:stepId/complete
+  const stepCompleteMatch = path.match(/^\/api\/workflows\/([^/]+)\/steps\/([^/]+)\/complete$/);
+  if (stepCompleteMatch && method === "POST") {
+    return completeWorkflowStep(request, env, stepCompleteMatch[1], stepCompleteMatch[2]);
+  }
+
+  const stepFailMatch = path.match(/^\/api\/workflows\/([^/]+)\/steps\/([^/]+)\/fail$/);
+  if (stepFailMatch && method === "POST") {
+    return failWorkflowStep(request, env, stepFailMatch[1], stepFailMatch[2]);
+  }
+
+  const workflowRunMatch = path.match(/^\/api\/workflows\/([^/]+)$/);
+  if (workflowRunMatch && method === "GET") {
+    return getWorkflowRun(env, workflowRunMatch[1]);
+  }
+
+  // ── Reviews ────────────────────────────────────────────
+  if (path === "/api/reviews" && method === "GET") {
+    return listPendingReviews(request, env);
+  }
+
+  const reviewApproveMatch = path.match(/^\/api\/reviews\/([^/]+)\/approve$/);
+  if (reviewApproveMatch && method === "POST") {
+    return approveReview(request, env, reviewApproveMatch[1]);
+  }
+
+  const reviewRejectMatch = path.match(/^\/api\/reviews\/([^/]+)\/reject$/);
+  if (reviewRejectMatch && method === "POST") {
+    return rejectReview(request, env, reviewRejectMatch[1]);
+  }
+
+  const reviewRevisionMatch = path.match(/^\/api\/reviews\/([^/]+)\/revision$/);
+  if (reviewRevisionMatch && method === "POST") {
+    return requestRevision(request, env, reviewRevisionMatch[1]);
+  }
+
   // ── Future API routes ─────────────────────────────────
-  // POST /api/products
-  // GET  /api/products
-  // POST /api/workflow/run
-  // GET  /api/workflow/runs
-  // POST /api/reviews
   // GET  /api/assets
   // ... added in future tasks
 
