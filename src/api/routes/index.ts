@@ -95,3 +95,9 @@ export {
   exportProduct,
   markReadyToPublish,
 } from "./exports";
+export {
+  runResearch,
+  getProductResearch,
+  getResearchOutput,
+  listResearchOutputs,
+} from "./researcher";

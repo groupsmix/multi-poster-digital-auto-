@@ -76,6 +76,10 @@ import {
   deleteAsset,
   exportProduct,
   markReadyToPublish,
+  runResearch,
+  getProductResearch,
+  getResearchOutput,
+  listResearchOutputs,
 } from "./routes";
 
 /**
@@ -398,6 +402,26 @@ export async function handleApiRequest(
   const productAssetsMatch = path.match(/^\/api\/products\/([^/]+)\/assets$/);
   if (productAssetsMatch && method === "GET") {
     return listProductAssets(env, productAssetsMatch[1]);
+  }
+
+  // ── Researcher AI ────────────────────────────────────────
+  // Product research: /api/products/:id/research
+  const productResearchMatch = path.match(/^\/api\/products\/([^/]+)\/research$/);
+  if (productResearchMatch) {
+    const productId = productResearchMatch[1];
+    if (method === "POST") return runResearch(request, env, productId);
+    if (method === "GET") return getProductResearch(env, productId);
+  }
+
+  // List all research outputs: GET /api/research
+  if (path === "/api/research" && method === "GET") {
+    return listResearchOutputs(request, env);
+  }
+
+  // Get specific research output: GET /api/research/:outputId
+  const researchOutputMatch = path.match(/^\/api\/research\/([^/]+)$/);
+  if (researchOutputMatch && method === "GET") {
+    return getResearchOutput(env, researchOutputMatch[1]);
   }
 
   // ── Exports ─────────────────────────────────────────────
