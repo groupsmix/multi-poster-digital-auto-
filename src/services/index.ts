@@ -66,3 +66,27 @@ export type {
   SocialExecutionResult,
   SocialBatchResult,
 } from "./social";
+
+export {
+  executeReviewer,
+  saveReviewerOutput,
+  createAiReviewFromResult,
+} from "./reviewer";
+export type {
+  ReviewerInput,
+  ReviewerResult,
+  ReviewerExecutionResult,
+  ReviewIssue,
+  ReviewSection,
+} from "./reviewer";
+
+export {
+  executeRegeneration,
+  listRegenerationHistory,
+  REGENERATION_TARGETS,
+} from "./regenerator";
+export type {
+  RegenerationInput,
+  RegenerationResult,
+  RegenerationTarget,
+} from "./regenerator";

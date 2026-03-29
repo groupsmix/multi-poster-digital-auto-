@@ -121,3 +121,9 @@ export {
   getProductSocialVariants,
   getSocialVariantById,
 } from "./social";
+export {
+  runReviewer,
+  getReviewerOutput,
+  triggerRegeneration,
+  getRegenerationHistory,
+} from "./reviewer";
