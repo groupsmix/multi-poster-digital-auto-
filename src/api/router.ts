@@ -92,6 +92,10 @@ import {
   runSocial,
   getProductSocialVariants,
   getSocialVariantById,
+  runReviewer,
+  getReviewerOutput,
+  triggerRegeneration,
+  getRegenerationHistory,
 } from "./routes";
 
 /**
@@ -505,6 +509,27 @@ export async function handleApiRequest(
   const socialVariantMatch = path.match(/^\/api\/social-variants\/([^/]+)$/);
   if (socialVariantMatch && method === "GET") {
     return getSocialVariantById(env, socialVariantMatch[1]);
+  }
+
+  // ── Reviewer AI ──────────────────────────────────────────
+  // Run reviewer: POST /api/products/:id/review
+  const productReviewAiMatch = path.match(/^\/api\/products\/([^/]+)\/review$/);
+  if (productReviewAiMatch) {
+    const productId = productReviewAiMatch[1];
+    if (method === "POST") return runReviewer(request, env, productId);
+    if (method === "GET") return getReviewerOutput(env, productId);
+  }
+
+  // Trigger partial regeneration: POST /api/products/:id/regenerate
+  const productRegenerateMatch = path.match(/^\/api\/products\/([^/]+)\/regenerate$/);
+  if (productRegenerateMatch && method === "POST") {
+    return triggerRegeneration(request, env, productRegenerateMatch[1]);
+  }
+
+  // Regeneration history: GET /api/products/:id/regeneration-history
+  const regenHistoryMatch = path.match(/^\/api\/products\/([^/]+)\/regeneration-history$/);
+  if (regenHistoryMatch && method === "GET") {
+    return getRegenerationHistory(env, regenHistoryMatch[1]);
   }
 
   // ── Exports ─────────────────────────────────────────────
