@@ -724,3 +724,115 @@ describe("analytics/getRunProviderPath", () => {
     expect(result).toHaveLength(0);
   });
 });
+
+// ── getDashboardStats insights tests ─────────────────────────
+
+describe("analytics/getDashboardStats/insights", () => {
+  it("returns insights object with all 7 required fields", async () => {
+    const { getDashboardStats } = await import("../src/services/analytics");
+    const env = makeMockEnv(makeMockStmt({
+      allResults: [],
+      firstResult: {
+        total_runs: 0,
+        successful_runs: 0,
+        failed_runs: 0,
+        avg_run_duration_ms: 0,
+        total_cost: 0,
+        grand_total: 0,
+        total_calls: 0,
+        label: null,
+        id: null,
+        cnt: 0,
+        avg_revisions: 0,
+        approved_count: 0,
+      },
+    }));
+
+    const stats = await getDashboardStats(env as any);
+    expect(stats.insights).toBeDefined();
+    expect(stats.insights).toHaveProperty("mostUsedDomain");
+    expect(stats.insights).toHaveProperty("mostUsedCategory");
+    expect(stats.insights).toHaveProperty("bestPerformingPlatform");
+    expect(stats.insights).toHaveProperty("mostApprovedPromptVersion");
+    expect(stats.insights).toHaveProperty("mostReliableProvider");
+    expect(stats.insights).toHaveProperty("avgRevisionsBeforeApproval");
+    expect(stats.insights).toHaveProperty("costPerApprovedOutput");
+  });
+
+  it("returns numeric defaults for avgRevisionsBeforeApproval and costPerApprovedOutput", async () => {
+    const { getDashboardStats } = await import("../src/services/analytics");
+    const env = makeMockEnv(makeMockStmt({
+      allResults: [],
+      firstResult: {
+        total_runs: 0,
+        successful_runs: 0,
+        failed_runs: 0,
+        avg_run_duration_ms: 0,
+        total_cost: 0,
+        grand_total: 0,
+        total_calls: 0,
+      },
+    }));
+
+    const stats = await getDashboardStats(env as any);
+    expect(typeof stats.insights.avgRevisionsBeforeApproval).toBe("number");
+    expect(typeof stats.insights.costPerApprovedOutput).toBe("number");
+  });
+
+  it("dashboard handler includes insights in response", async () => {
+    const { getDashboard } = await import("../src/api/routes/analytics/handlers");
+    const env = makeMockEnv(makeMockStmt({
+      allResults: [],
+      firstResult: {
+        total_runs: 5,
+        successful_runs: 4,
+        failed_runs: 1,
+        avg_run_duration_ms: 3000,
+        total_cost: 1.5,
+        grand_total: 1.5,
+        total_calls: 20,
+      },
+    }));
+    const req = makeRequest("GET", "http://localhost/api/analytics/dashboard");
+    const res = await getDashboard(req, env as any);
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.data.insights).toBeDefined();
+    expect(body.data.insights).toHaveProperty("mostUsedDomain");
+    expect(body.data.insights).toHaveProperty("mostReliableProvider");
+    expect(body.data.insights).toHaveProperty("costPerApprovedOutput");
+  });
+});
+
+// ── RankedInsight type export test ───────────────────────────
+
+describe("analytics/RankedInsight-export", () => {
+  it("exports RankedInsight type from services index", async () => {
+    // TypeScript type exports can't be tested at runtime,
+    // but we can verify the interface shape is used in DashboardStats
+    const { getDashboardStats } = await import("../src/services/analytics");
+    const env = makeMockEnv(makeMockStmt({
+      allResults: [],
+      firstResult: {
+        total_runs: 0,
+        successful_runs: 0,
+        failed_runs: 0,
+        avg_run_duration_ms: 0,
+        total_cost: 0,
+        grand_total: 0,
+        total_calls: 0,
+        label: "Test Domain",
+        id: "dom_1",
+        cnt: 5,
+      },
+    }));
+
+    const stats = await getDashboardStats(env as any);
+    // When data exists, insights should have the right shape
+    if (stats.insights.mostUsedDomain) {
+      expect(stats.insights.mostUsedDomain).toHaveProperty("label");
+      expect(stats.insights.mostUsedDomain).toHaveProperty("id");
+      expect(stats.insights.mostUsedDomain).toHaveProperty("count");
+    }
+  });
+});

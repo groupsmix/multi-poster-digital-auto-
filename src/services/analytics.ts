@@ -72,7 +72,14 @@ export interface RoutingAuditInput {
   totalLatencyMs?: number;
 }
 
-/** Dashboard stats summary response. */
+/** Ranked insight row for "most X" dashboard metrics. */
+export interface RankedInsight {
+  label: string;
+  id: string | null;
+  count: number;
+  extra?: Record<string, unknown>;
+}
+
 export interface DashboardStats {
   overview: {
     totalRuns: number;
@@ -86,6 +93,15 @@ export interface DashboardStats {
   approvalStats: ApprovalStatsRow[];
   recentRouting: RoutingAuditRow[];
   dailyTrend: DailyTrendRow[];
+  insights: {
+    mostUsedDomain: RankedInsight | null;
+    mostUsedCategory: RankedInsight | null;
+    bestPerformingPlatform: RankedInsight | null;
+    mostApprovedPromptVersion: RankedInsight | null;
+    mostReliableProvider: RankedInsight | null;
+    avgRevisionsBeforeApproval: number;
+    costPerApprovedOutput: number;
+  };
 }
 
 export interface ProviderUsageRow {
@@ -494,7 +510,7 @@ export async function getDashboardStats(
   const start = startDate ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const end = endDate ?? now.slice(0, 10);
 
-  const [overview, providerUsage, stepTiming, approvalStats, recentRouting, dailyTrend] =
+  const [overview, providerUsage, stepTiming, approvalStats, recentRouting, dailyTrend, insights] =
     await Promise.all([
       getOverviewStats(env, start, end),
       getProviderUsageStats(env, start, end),
@@ -502,6 +518,7 @@ export async function getDashboardStats(
       getApprovalStats(env, start, end, domainId),
       getRecentRoutingAudits(env, 20),
       getDailyTrend(env, start, end),
+      getDashboardInsights(env, start, end),
     ]);
 
   return {
@@ -511,6 +528,7 @@ export async function getDashboardStats(
     approvalStats,
     recentRouting,
     dailyTrend,
+    insights,
   };
 }
 
@@ -906,6 +924,236 @@ async function getDailyTrend(
   } catch (err) {
     console.error("[analytics/getDailyTrend]", err);
     return [];
+  }
+}
+
+/**
+ * Get dashboard insight metrics required by architecture Section 24:
+ * most used card, most used category, best performing platform,
+ * most approved prompt version, most reliable provider,
+ * average revisions before approval, cost per approved output.
+ */
+async function getDashboardInsights(
+  env: Env,
+  startDate: string,
+  endDate: string,
+): Promise<DashboardStats["insights"]> {
+  const dateFilter = `created_at >= '${startDate}' AND created_at <= '${endDate}T23:59:59'`;
+
+  const [
+    mostUsedDomain,
+    mostUsedCategory,
+    bestPerformingPlatform,
+    mostApprovedPromptVersion,
+    mostReliableProvider,
+    avgRevisions,
+    costPerApproved,
+  ] = await Promise.all([
+    getMostUsedDomain(env, dateFilter),
+    getMostUsedCategory(env, dateFilter),
+    getBestPerformingPlatform(env, dateFilter),
+    getMostApprovedPromptVersion(env, dateFilter),
+    getMostReliableProvider(env, startDate, endDate),
+    getAvgRevisionsBeforeApproval(env, dateFilter),
+    getCostPerApprovedOutput(env, dateFilter),
+  ]);
+
+  return {
+    mostUsedDomain,
+    mostUsedCategory,
+    bestPerformingPlatform,
+    mostApprovedPromptVersion,
+    mostReliableProvider,
+    avgRevisionsBeforeApproval: avgRevisions,
+    costPerApprovedOutput: costPerApproved,
+  };
+}
+
+/** Most used domain card — counts workflow runs per domain. */
+async function getMostUsedDomain(
+  env: Env,
+  dateFilter: string,
+): Promise<RankedInsight | null> {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT d.name as label, d.id as id, COUNT(wr.id) as cnt
+       FROM workflow_runs wr
+       JOIN products p ON wr.product_id = p.id
+       JOIN domains d ON p.domain_id = d.id
+       WHERE wr.${dateFilter}
+       GROUP BY d.id
+       ORDER BY cnt DESC
+       LIMIT 1`,
+    ).first();
+    if (!row) return null;
+    return { label: row.label as string, id: row.id as string, count: row.cnt as number };
+  } catch {
+    return null;
+  }
+}
+
+/** Most used category — counts workflow runs per category. */
+async function getMostUsedCategory(
+  env: Env,
+  dateFilter: string,
+): Promise<RankedInsight | null> {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT c.name as label, c.id as id, COUNT(wr.id) as cnt
+       FROM workflow_runs wr
+       JOIN products p ON wr.product_id = p.id
+       JOIN categories c ON p.category_id = c.id
+       WHERE wr.${dateFilter}
+       GROUP BY c.id
+       ORDER BY cnt DESC
+       LIMIT 1`,
+    ).first();
+    if (!row) return null;
+    return { label: row.label as string, id: row.id as string, count: row.cnt as number };
+  } catch {
+    return null;
+  }
+}
+
+/** Best performing platform — platform with highest approval rate. */
+async function getBestPerformingPlatform(
+  env: Env,
+  dateFilter: string,
+): Promise<RankedInsight | null> {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT pl.name as label, pl.id as id,
+              COUNT(pv.id) as total,
+              SUM(CASE WHEN pv.status = 'approved' THEN 1 ELSE 0 END) as approved
+       FROM product_variants pv
+       JOIN platforms pl ON pv.platform_id = pl.id
+       WHERE pv.${dateFilter} AND pv.platform_id IS NOT NULL
+       GROUP BY pl.id
+       HAVING total > 0
+       ORDER BY (CAST(approved AS REAL) / total) DESC, total DESC
+       LIMIT 1`,
+    ).first();
+    if (!row) return null;
+    return {
+      label: row.label as string,
+      id: row.id as string,
+      count: row.total as number,
+      extra: { approved: row.approved as number },
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Most approved prompt version — prompt template version with most approvals. */
+async function getMostApprovedPromptVersion(
+  env: Env,
+  dateFilter: string,
+): Promise<RankedInsight | null> {
+  try {
+    // Join workflow_runs → workflow_steps (to get prompt version used) → reviews
+    // Fallback: count approvals per prompt template from reviews
+    const row = await env.DB.prepare(
+      `SELECT pt.name as label, pt.id as id, pt.version as version,
+              COUNT(r.id) as cnt
+       FROM reviews r
+       JOIN products p ON r.product_id = p.id
+       JOIN prompt_templates pt ON pt.scope_ref = p.domain_id OR pt.scope_ref = p.category_id
+       WHERE r.${dateFilter} AND r.approval_status = 'approved' AND pt.is_active = 1
+       GROUP BY pt.id
+       ORDER BY cnt DESC
+       LIMIT 1`,
+    ).first();
+    if (!row) return null;
+    return {
+      label: row.label as string,
+      id: row.id as string,
+      count: row.cnt as number,
+      extra: { version: row.version as number },
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Most reliable provider — highest success rate from provider_usage_summary. */
+async function getMostReliableProvider(
+  env: Env,
+  startDate: string,
+  endDate: string,
+): Promise<RankedInsight | null> {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT provider_name as label,
+              SUM(total_calls) as total,
+              SUM(successful) as ok,
+              CASE WHEN SUM(total_calls) > 0
+                THEN CAST(SUM(successful) AS REAL) / SUM(total_calls)
+                ELSE 0
+              END as success_rate
+       FROM provider_usage_summary
+       WHERE date >= ? AND date <= ?
+       GROUP BY provider_name
+       HAVING total >= 1
+       ORDER BY success_rate DESC, total DESC
+       LIMIT 1`,
+    )
+      .bind(startDate, endDate)
+      .first();
+    if (!row) return null;
+    return {
+      label: row.label as string,
+      id: null,
+      count: row.total as number,
+      extra: { successRate: row.success_rate as number, successful: row.ok as number },
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Average number of revisions before a product is approved. */
+async function getAvgRevisionsBeforeApproval(
+  env: Env,
+  dateFilter: string,
+): Promise<number> {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT AVG(rev_count) as avg_revisions
+       FROM (
+         SELECT p.id, COUNT(rev.id) as rev_count
+         FROM products p
+         LEFT JOIN revisions rev ON rev.product_id = p.id
+         WHERE p.status = 'approved' AND p.${dateFilter}
+         GROUP BY p.id
+       )`,
+    ).first();
+    return (row?.avg_revisions as number) ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Cost per approved output — total cost / number of approved products. */
+async function getCostPerApprovedOutput(
+  env: Env,
+  dateFilter: string,
+): Promise<number> {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT
+         COALESCE(SUM(ce.usage_amount), 0) as total_cost,
+         COUNT(DISTINCT CASE WHEN p.status = 'approved' THEN p.id END) as approved_count
+       FROM cost_events ce
+       JOIN workflow_runs wr ON ce.run_id = wr.id
+       JOIN products p ON wr.product_id = p.id
+       WHERE ce.${dateFilter}`,
+    ).first();
+    const totalCost = (row?.total_cost as number) ?? 0;
+    const approvedCount = (row?.approved_count as number) ?? 0;
+    return approvedCount > 0 ? totalCost / approvedCount : 0;
+  } catch {
+    return 0;
   }
 }
 

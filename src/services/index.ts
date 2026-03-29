@@ -108,6 +108,7 @@ export type {
   AnalyticsEventType,
   RoutingAuditInput,
   DashboardStats,
+  RankedInsight,
   ProviderUsageRow,
   StepTimingRow,
   ApprovalStatsRow,
