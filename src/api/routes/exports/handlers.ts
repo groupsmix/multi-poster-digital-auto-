@@ -559,6 +559,119 @@ export async function exportProductZipManifest(
   }
 }
 
+// ── EXPORT (CSV) ─────────────────────────────────────────
+
+function escapeCsvField(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  const str =
+    typeof value === "object" ? JSON.stringify(value) : String(value);
+  if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+function renderCsv(pkg: ExportPackage): string {
+  const allVariants = [
+    ...pkg.variants.base,
+    ...pkg.variants.platform,
+    ...pkg.variants.social,
+  ];
+
+  // CSV rows: one row per variant, with product info repeated
+  const headers = [
+    "product_id",
+    "product_idea",
+    "product_status",
+    "product_version",
+    "domain",
+    "category",
+    "variant_id",
+    "variant_type",
+    "variant_version",
+    "platform",
+    "social_channel",
+    "title",
+    "description",
+    "price_suggestion",
+    "seo",
+    "status",
+  ];
+
+  const rows = allVariants.map((v) => [
+    pkg.product.id,
+    pkg.product.idea,
+    pkg.product.status,
+    pkg.product.current_version,
+    pkg.product.domain?.name || "",
+    pkg.product.category?.name || "",
+    v.id,
+    v.variant_type,
+    v.version,
+    v.platform_name || "",
+    v.social_channel_name || "",
+    v.title || "",
+    v.description || "",
+    v.price_suggestion || "",
+    v.seo ? JSON.stringify(v.seo) : "",
+    v.status,
+  ]);
+
+  // If no variants, output a single product row
+  if (rows.length === 0) {
+    rows.push([
+      pkg.product.id,
+      pkg.product.idea,
+      pkg.product.status,
+      pkg.product.current_version,
+      pkg.product.domain?.name || "",
+      pkg.product.category?.name || "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+    ]);
+  }
+
+  const header = headers.map(escapeCsvField).join(",");
+  const dataRows = rows.map((row) =>
+    row.map(escapeCsvField).join(","),
+  );
+
+  return [header, ...dataRows].join("\n");
+}
+
+export async function exportProductCsv(
+  env: Env,
+  productId: string,
+): Promise<Response> {
+  try {
+    const { error, pkg } = await gatherExportData(env, productId);
+    if (error) return error;
+    if (!pkg) return serverError("Failed to gather export data.");
+
+    pkg.format = "csv";
+    const csv = renderCsv(pkg);
+
+    return new Response(csv, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${productId}_export.csv"`,
+      },
+    });
+  } catch (err) {
+    console.error("[exports/csv]", err);
+    return serverError("Failed to export product as CSV.");
+  }
+}
+
 // ── EXPORT (format router) ──────────────────────────────
 
 export async function exportProduct(
@@ -582,6 +695,8 @@ export async function exportProduct(
       return exportProductMarkdown(env, productId);
     case "zip_manifest":
       return exportProductZipManifest(env, productId);
+    case "csv":
+      return exportProductCsv(env, productId);
     default:
       return badRequest(`Unsupported export format: ${format}`);
   }

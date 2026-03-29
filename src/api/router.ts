@@ -76,6 +76,8 @@ import {
   deleteAsset,
   exportProduct,
   markReadyToPublish,
+  exportBulkConfig,
+  exportBulkAnalytics,
   runResearch,
   getProductResearch,
   getResearchOutput,
@@ -107,6 +109,18 @@ import {
   createAnalyticsEvent,
   listAnalyticsEvents,
 } from "./routes";
+import {
+  runPlanner,
+  getProductPlan,
+} from "./routes/planner";
+import {
+  handleRunPolicyCheck,
+  handleGetPolicyChecks,
+  handleListPolicyRules,
+  handleCreatePolicyRule,
+  handleUpdatePolicyRule,
+  handleDeletePolicyRule,
+} from "./routes/risk-policy";
 
 /**
  * API router — handles all requests under /api/*.
@@ -451,6 +465,15 @@ export async function handleApiRequest(
     return getResearchOutput(env, researchOutputMatch[1]);
   }
 
+  // ── Planner AI ──────────────────────────────────────────
+  // Product plan: /api/products/:id/plan
+  const productPlanMatch = path.match(/^\/api\/products\/([^/]+)\/plan$/);
+  if (productPlanMatch) {
+    const productId = productPlanMatch[1];
+    if (method === "POST") return runPlanner(request, env, productId);
+    if (method === "GET") return getProductPlan(env, productId);
+  }
+
   // ── Creator AI ──────────────────────────────────────────
   // Product creation: /api/products/:id/create
   const productCreateMatch = path.match(/^\/api\/products\/([^/]+)\/create$/);
@@ -542,8 +565,46 @@ export async function handleApiRequest(
     return getRegenerationHistory(env, regenHistoryMatch[1]);
   }
 
+  // ── Risk/Policy ─────────────────────────────────────────
+  // Policy check: POST /api/products/:id/policy-check
+  const productPolicyCheckMatch = path.match(/^\/api\/products\/([^/]+)\/policy-check$/);
+  if (productPolicyCheckMatch && method === "POST") {
+    return handleRunPolicyCheck(request, env, productPolicyCheckMatch[1]);
+  }
+
+  // Policy check history: GET /api/products/:id/policy-checks
+  const productPolicyChecksMatch = path.match(/^\/api\/products\/([^/]+)\/policy-checks$/);
+  if (productPolicyChecksMatch && method === "GET") {
+    return handleGetPolicyChecks(env, productPolicyChecksMatch[1]);
+  }
+
+  // Policy rules CRUD: /api/policy-rules
+  if (path === "/api/policy-rules" && method === "GET") {
+    return handleListPolicyRules(env);
+  }
+  if (path === "/api/policy-rules" && method === "POST") {
+    return handleCreatePolicyRule(request, env);
+  }
+
+  const policyRuleMatch = path.match(/^\/api\/policy-rules\/([^/]+)$/);
+  if (policyRuleMatch) {
+    const ruleId = policyRuleMatch[1];
+    if (method === "PUT") return handleUpdatePolicyRule(request, env, ruleId);
+    if (method === "DELETE") return handleDeletePolicyRule(env, ruleId);
+  }
+
   // ── Exports ─────────────────────────────────────────────
-  // Export product package: GET /api/products/:id/export?format=json|markdown|zip_manifest
+  // Bulk config export: GET /api/exports/config?type=...&format=json|csv
+  if (path === "/api/exports/config" && method === "GET") {
+    return exportBulkConfig(request, env);
+  }
+
+  // Bulk analytics export: GET /api/exports/analytics?type=...&format=json|csv
+  if (path === "/api/exports/analytics" && method === "GET") {
+    return exportBulkAnalytics(request, env);
+  }
+
+  // Export product package: GET /api/products/:id/export?format=json|markdown|zip_manifest|csv
   const productExportMatch = path.match(/^\/api\/products\/([^/]+)\/export$/);
   if (productExportMatch && method === "GET") {
     return exportProduct(request, env, productExportMatch[1]);

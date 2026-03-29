@@ -1,30 +1,50 @@
 import { Env } from "../../shared/types";
 import { json, notFound, serverError } from "../../shared/utils";
 import { APP, ASSET_TYPES, EXPORT_FORMATS } from "../../config";
+import { renderDashboardShell } from "../ui/shell";
 
 /**
  * Dashboard shell router — handles all requests under /dashboard/*.
  *
- * For now returns a JSON shell response.
- * Will serve the SPA / SSR frontend in future tasks.
+ * Serves the SPA shell for any /dashboard path. The frontend is a
+ * single-page app that uses hash-based routing and fetches data
+ * from the /api/* endpoints.
+ *
+ * JSON data endpoints remain available under /dashboard/api/*
+ * for backward compatibility.
  */
 export async function handleDashboardRequest(
   _request: Request,
   env: Env,
   path: string,
 ): Promise<Response> {
+  // ── Serve the SPA shell for all dashboard paths ──────
+  // The SPA handles routing client-side via hash fragments.
+  // JSON API endpoints are under /dashboard/api/* for backward compat.
+  if (!path.startsWith("/dashboard/api/")) {
+    const html = renderDashboardShell();
+    return new Response(html, {
+      status: 200,
+      headers: { "Content-Type": "text/html; charset=utf-8" },
+    });
+  }
+
+  // ── Backward-compatible JSON endpoints ────────────────
+  // Strip "/dashboard/api" prefix and route to JSON handlers.
+  const jsonPath = path.replace("/dashboard/api", "/dashboard");
+
   // ── Home — domain cards pulled from DB ────────────────
-  if (path === "/dashboard" || path === "/dashboard/") {
+  if (jsonPath === "/dashboard" || jsonPath === "/dashboard/") {
     return handleDashboardHome(env);
   }
 
   // ── Domains list ──────────────────────────────────────
-  if (path === "/dashboard/domains" || path === "/dashboard/domains/") {
+  if (jsonPath === "/dashboard/domains" || jsonPath === "/dashboard/domains/") {
     return handleDashboardDomains(env);
   }
 
   // ── Domain detail — shows categories for that domain ──
-  const domainDetailMatch = path.match(
+  const domainDetailMatch = jsonPath.match(
     /^\/dashboard\/domains\/([^/]+)$/,
   );
   if (domainDetailMatch) {
@@ -32,42 +52,42 @@ export async function handleDashboardRequest(
   }
 
   // ── Platforms list ────────────────────────────────────
-  if (path === "/dashboard/platforms" || path === "/dashboard/platforms/") {
+  if (jsonPath === "/dashboard/platforms" || jsonPath === "/dashboard/platforms/") {
     return handleDashboardPlatforms(env);
   }
 
   // ── Social channels list ──────────────────────────────
-  if (path === "/dashboard/social" || path === "/dashboard/social/") {
+  if (jsonPath === "/dashboard/social" || jsonPath === "/dashboard/social/") {
     return handleDashboardSocialChannels(env);
   }
 
   // ── Prompt Studio ──────────────────────────────────────
-  if (path === "/dashboard/prompts" || path === "/dashboard/prompts/") {
+  if (jsonPath === "/dashboard/prompts" || jsonPath === "/dashboard/prompts/") {
     return handleDashboardPrompts(env);
   }
 
   // ── AI Router ────────────────────────────────────────
-  if (path === "/dashboard/router" || path === "/dashboard/router/") {
+  if (jsonPath === "/dashboard/router" || jsonPath === "/dashboard/router/") {
     return handleDashboardRouter(env);
   }
 
   // ── Products ─────────────────────────────────────────────
-  if (path === "/dashboard/products" || path === "/dashboard/products/") {
+  if (jsonPath === "/dashboard/products" || jsonPath === "/dashboard/products/") {
     return handleDashboardProducts(env);
   }
 
   // ── Workflows ───────────────────────────────────────────
-  if (path === "/dashboard/workflows" || path === "/dashboard/workflows/") {
+  if (jsonPath === "/dashboard/workflows" || jsonPath === "/dashboard/workflows/") {
     return handleDashboardWorkflows(env);
   }
 
   // ── Reviews ─────────────────────────────────────────────
-  if (path === "/dashboard/reviews" || path === "/dashboard/reviews/") {
+  if (jsonPath === "/dashboard/reviews" || jsonPath === "/dashboard/reviews/") {
     return handleDashboardReviews(env);
   }
 
   // ── Review Detail ───────────────────────────────────────
-  const reviewDetailMatch = path.match(
+  const reviewDetailMatch = jsonPath.match(
     /^\/dashboard\/reviews\/([^/]+)$/,
   );
   if (reviewDetailMatch) {
@@ -75,7 +95,7 @@ export async function handleDashboardRequest(
   }
 
   // ── Product Version History ─────────────────────────────
-  const productHistoryMatch = path.match(
+  const productHistoryMatch = jsonPath.match(
     /^\/dashboard\/products\/([^/]+)\/history$/,
   );
   if (productHistoryMatch) {
@@ -83,16 +103,16 @@ export async function handleDashboardRequest(
   }
 
   // ── Exports ──────────────────────────────────────────
-  if (path === "/dashboard/exports" || path === "/dashboard/exports/") {
+  if (jsonPath === "/dashboard/exports" || jsonPath === "/dashboard/exports/") {
     return handleDashboardExports(env);
   }
 
   // ── Assets Library ────────────────────────────────────
-  if (path === "/dashboard/assets" || path === "/dashboard/assets/") {
+  if (jsonPath === "/dashboard/assets" || jsonPath === "/dashboard/assets/") {
     return handleDashboardAssets(env);
   }
 
-  const assetDetailMatch = path.match(
+  const assetDetailMatch = jsonPath.match(
     /^\/dashboard\/assets\/([^/]+)$/,
   );
   if (assetDetailMatch) {
@@ -107,7 +127,7 @@ export async function handleDashboardRequest(
   ];
 
   for (const route of subRoutes) {
-    if (path === `/dashboard/${route}` || path.startsWith(`/dashboard/${route}/`)) {
+    if (jsonPath === `/dashboard/${route}` || jsonPath.startsWith(`/dashboard/${route}/`)) {
       return json({
         app: APP.NAME,
         section: route,
@@ -116,7 +136,7 @@ export async function handleDashboardRequest(
     }
   }
 
-  return notFound(`Dashboard route not found: ${path}`);
+  return notFound(`Dashboard route not found: ${jsonPath}`);
 }
 
 // ── Dashboard Home — domain cards ───────────────────────
