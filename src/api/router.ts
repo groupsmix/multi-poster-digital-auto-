@@ -73,6 +73,8 @@ import {
   getAsset,
   uploadAsset,
   deleteAsset,
+  exportProduct,
+  markReadyToPublish,
 } from "./routes";
 
 /**
@@ -390,6 +392,19 @@ export async function handleApiRequest(
   const productAssetsMatch = path.match(/^\/api\/products\/([^/]+)\/assets$/);
   if (productAssetsMatch && method === "GET") {
     return listProductAssets(env, productAssetsMatch[1]);
+  }
+
+  // ── Exports ─────────────────────────────────────────────
+  // Export product package: GET /api/products/:id/export?format=json|markdown|zip_manifest
+  const productExportMatch = path.match(/^\/api\/products\/([^/]+)\/export$/);
+  if (productExportMatch && method === "GET") {
+    return exportProduct(request, env, productExportMatch[1]);
+  }
+
+  // Mark product as ready_to_publish: POST /api/products/:id/ready-to-publish
+  const readyToPublishMatch = path.match(/^\/api\/products\/([^/]+)\/ready-to-publish$/);
+  if (readyToPublishMatch && method === "POST") {
+    return markReadyToPublish(env, readyToPublishMatch[1]);
   }
 
   return notFound(`API route not found: ${method} ${path}`);

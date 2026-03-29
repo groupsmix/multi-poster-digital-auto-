@@ -1,6 +1,6 @@
 import { Env } from "../../shared/types";
 import { json, notFound, serverError } from "../../shared/utils";
-import { APP, ASSET_TYPES } from "../../config";
+import { APP, ASSET_TYPES, EXPORT_FORMATS } from "../../config";
 
 /**
  * Dashboard shell router — handles all requests under /dashboard/*.
@@ -82,6 +82,11 @@ export async function handleDashboardRequest(
     return handleDashboardProductHistory(env, productHistoryMatch[1]);
   }
 
+  // ── Exports ──────────────────────────────────────────
+  if (path === "/dashboard/exports" || path === "/dashboard/exports/") {
+    return handleDashboardExports(env);
+  }
+
   // ── Assets Library ────────────────────────────────────
   if (path === "/dashboard/assets" || path === "/dashboard/assets/") {
     return handleDashboardAssets(env);
@@ -140,6 +145,7 @@ async function handleDashboardHome(env: Env): Promise<Response> {
         "/dashboard/router",
         "/dashboard/reviews",
         "/dashboard/assets",
+        "/dashboard/exports",
         "/dashboard/publish",
         "/dashboard/settings",
       ],
@@ -874,6 +880,55 @@ async function handleDashboardAssets(env: Env): Promise<Response> {
 }
 
 // ── Asset Detail ────────────────────────────────────────────
+
+// ── Exports — exportable products ───────────────────────
+
+async function handleDashboardExports(env: Env): Promise<Response> {
+  try {
+    const products = await env.DB.prepare(
+      `SELECT p.*, d.name as domain_name, c.name as category_name
+       FROM products p
+       LEFT JOIN domains d ON p.domain_id = d.id
+       LEFT JOIN categories c ON p.category_id = c.id
+       WHERE p.status IN ('approved', 'ready_to_publish')
+       ORDER BY p.updated_at DESC`,
+    ).all();
+
+    // Group by status
+    const byStatus: Record<string, unknown[]> = {};
+    for (const row of products.results) {
+      const status = row.status as string;
+      if (!byStatus[status]) byStatus[status] = [];
+      byStatus[status].push(row);
+    }
+
+    return json({
+      app: APP.NAME,
+      section: "exports",
+      message:
+        "Export Center — export approved products as JSON, markdown, or ZIP manifest.",
+      products: products.results,
+      by_status: byStatus,
+      total: products.results.length,
+      export_formats: EXPORT_FORMATS,
+      status_flow: {
+        current: "approved",
+        next: "ready_to_publish",
+        description:
+          "After export, mark as ready_to_publish to indicate the product is packaged and ready.",
+      },
+      api: {
+        export: "GET /api/products/:id/export?format=json|markdown|zip_manifest",
+        mark_ready: "POST /api/products/:id/ready-to-publish",
+      },
+    });
+  } catch (err) {
+    console.error("[dashboard/exports]", err);
+    return serverError("Failed to load export center.");
+  }
+}
+
+// ── Asset Detail ─────────────────────────────────────────
 
 async function handleDashboardAssetDetail(
   env: Env,
