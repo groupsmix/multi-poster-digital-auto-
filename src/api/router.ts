@@ -58,11 +58,16 @@ import {
   completeWorkflowStep,
   failWorkflowStep,
   createReview,
+  getReview,
   listProductReviews,
   approveReview,
   rejectReview,
   requestRevision,
   listPendingReviews,
+  addReviewComment,
+  listReviewComments,
+  listProductRevisions,
+  getProductVersionHistory,
 } from "./routes";
 
 /**
@@ -278,6 +283,18 @@ export async function handleApiRequest(
     if (method === "POST") return createReview(request, env, productId);
   }
 
+  // Product revisions: /api/products/:id/revisions
+  const productRevisionsMatch = path.match(/^\/api\/products\/([^/]+)\/revisions$/);
+  if (productRevisionsMatch && method === "GET") {
+    return listProductRevisions(env, productRevisionsMatch[1]);
+  }
+
+  // Product version history: /api/products/:id/version-history
+  const productVersionHistoryMatch = path.match(/^\/api\/products\/([^/]+)\/version-history$/);
+  if (productVersionHistoryMatch && method === "GET") {
+    return getProductVersionHistory(env, productVersionHistoryMatch[1]);
+  }
+
   const productMatch = path.match(/^\/api\/products\/([^/]+)$/);
   if (productMatch) {
     const id = productMatch[1];
@@ -333,6 +350,20 @@ export async function handleApiRequest(
   const reviewRevisionMatch = path.match(/^\/api\/reviews\/([^/]+)\/revision$/);
   if (reviewRevisionMatch && method === "POST") {
     return requestRevision(request, env, reviewRevisionMatch[1]);
+  }
+
+  // Review comments: /api/reviews/:id/comments
+  const reviewCommentsMatch = path.match(/^\/api\/reviews\/([^/]+)\/comments$/);
+  if (reviewCommentsMatch) {
+    const reviewId = reviewCommentsMatch[1];
+    if (method === "GET") return listReviewComments(env, reviewId);
+    if (method === "POST") return addReviewComment(request, env, reviewId);
+  }
+
+  // Single review: /api/reviews/:id (must come after action routes)
+  const reviewDetailMatch = path.match(/^\/api\/reviews\/([^/]+)$/);
+  if (reviewDetailMatch && method === "GET") {
+    return getReview(env, reviewDetailMatch[1]);
   }
 
   // ── Future API routes ─────────────────────────────────
