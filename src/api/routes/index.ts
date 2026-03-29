@@ -121,3 +121,15 @@ export {
   getProductSocialVariants,
   getSocialVariantById,
 } from "./social";
+export {
+  getDashboard,
+  getProviderUsage,
+  getRoutingAudit,
+  getRunAnalytics,
+  getStepTimingAnalytics,
+  getApprovalAnalytics,
+  getCostAnalytics,
+  getDailyTrends,
+  createAnalyticsEvent,
+  listAnalyticsEvents,
+} from "./analytics";

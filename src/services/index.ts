@@ -66,3 +66,27 @@ export type {
   SocialExecutionResult,
   SocialBatchResult,
 } from "./social";
+
+export {
+  recordEvent,
+  recordRoutingAttempts,
+  recordStepTiming,
+  recordApprovalEvent,
+  recordCostEvent,
+  getDashboardStats,
+  getRunProviderPath,
+  getRunEvents,
+  getProviderBreakdown,
+  ANALYTICS_EVENT_TYPES,
+} from "./analytics";
+export type {
+  AnalyticsEvent,
+  AnalyticsEventType,
+  RoutingAuditInput,
+  DashboardStats,
+  ProviderUsageRow,
+  StepTimingRow,
+  ApprovalStatsRow,
+  RoutingAuditRow,
+  DailyTrendRow,
+} from "./analytics";
