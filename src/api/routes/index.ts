@@ -90,3 +90,7 @@ export {
   uploadAsset,
   deleteAsset,
 } from "./assets";
+export {
+  exportProduct,
+  markReadyToPublish,
+} from "./exports";

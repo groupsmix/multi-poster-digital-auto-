@@ -70,6 +70,15 @@ export const ASSET_TYPES = [
 
 export type AssetType = (typeof ASSET_TYPES)[number];
 
+/** Supported export formats for product packages */
+export const EXPORT_FORMATS = [
+  "json",
+  "markdown",
+  "zip_manifest",
+] as const;
+
+export type ExportFormat = (typeof EXPORT_FORMATS)[number];
+
 /** Default limits — can be overridden via dashboard settings later */
 export const DEFAULTS = {
   /** Max retries per workflow step before marking failed */
