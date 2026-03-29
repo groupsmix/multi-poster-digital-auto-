@@ -17,6 +17,7 @@ import { handleDashboardRequest } from "./dashboard/routes";
 
 // Re-export Durable Object classes for wrangler binding discovery
 export { WorkflowCoordinator } from "./durable-objects";
+export { ProviderRouter } from "./durable-objects";
 
 export default {
   async fetch(

@@ -22,12 +22,17 @@ bucket_name = "nexus-assets"
 # ── Durable Objects ──────────────────────────────────────
 [durable_objects]
 bindings = [
-  { name = "WORKFLOW_COORDINATOR", class_name = "WorkflowCoordinator" }
+  { name = "WORKFLOW_COORDINATOR", class_name = "WorkflowCoordinator" },
+  { name = "PROVIDER_ROUTER", class_name = "ProviderRouter" }
 ]
 
 [[migrations]]
 tag = "v1"
 new_classes = ["WorkflowCoordinator"]
+
+[[migrations]]
+tag = "v2"
+new_classes = ["ProviderRouter"]
 
 # ── Environment Variables ────────────────────────────────
 [vars]

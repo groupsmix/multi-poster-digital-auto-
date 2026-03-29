@@ -29,6 +29,19 @@ import {
   activatePromptVersion,
   updatePromptTemplate,
   deletePromptTemplate,
+  listProviders,
+  getProvider,
+  createProvider,
+  updateProvider,
+  deleteProvider,
+  sleepProvider,
+  wakeProvider,
+  cooldownProvider,
+  reportProviderError,
+  reportProviderRateLimit,
+  listTaskLanes,
+  getTaskLane,
+  resolveTaskLane,
 } from "./routes";
 
 /**
@@ -150,6 +163,66 @@ export async function handleApiRequest(
     if (method === "GET") return getPromptTemplate(env, id);
     if (method === "PUT") return updatePromptTemplate(request, env, id);
     if (method === "DELETE") return deletePromptTemplate(env, id);
+  }
+
+  // ── Providers ───────────────────────────────────────────
+
+  // Task lanes
+  if (path === "/api/providers/lanes" && method === "GET") {
+    return listTaskLanes(env);
+  }
+
+  const laneMatch = path.match(/^\/api\/providers\/lanes\/([^/]+)$/);
+  if (laneMatch && method === "GET") {
+    return getTaskLane(env, laneMatch[1]);
+  }
+
+  // Resolve best provider for a lane (mock)
+  const resolveMatch = path.match(/^\/api\/providers\/resolve\/([^/]+)$/);
+  if (resolveMatch && method === "GET") {
+    return resolveTaskLane(env, resolveMatch[1]);
+  }
+
+  // Provider CRUD
+  if (path === "/api/providers" && method === "GET") {
+    return listProviders(request, env);
+  }
+  if (path === "/api/providers" && method === "POST") {
+    return createProvider(request, env);
+  }
+
+  // Provider action routes (must be matched before :id)
+  const providerSleepMatch = path.match(/^\/api\/providers\/([^/]+)\/sleep$/);
+  if (providerSleepMatch && method === "POST") {
+    return sleepProvider(env, providerSleepMatch[1]);
+  }
+
+  const providerWakeMatch = path.match(/^\/api\/providers\/([^/]+)\/wake$/);
+  if (providerWakeMatch && method === "POST") {
+    return wakeProvider(env, providerWakeMatch[1]);
+  }
+
+  const providerCooldownMatch = path.match(/^\/api\/providers\/([^/]+)\/cooldown$/);
+  if (providerCooldownMatch && method === "POST") {
+    return cooldownProvider(request, env, providerCooldownMatch[1]);
+  }
+
+  const providerErrorMatch = path.match(/^\/api\/providers\/([^/]+)\/report-error$/);
+  if (providerErrorMatch && method === "POST") {
+    return reportProviderError(request, env, providerErrorMatch[1]);
+  }
+
+  const providerRateLimitMatch = path.match(/^\/api\/providers\/([^/]+)\/report-rate-limit$/);
+  if (providerRateLimitMatch && method === "POST") {
+    return reportProviderRateLimit(request, env, providerRateLimitMatch[1]);
+  }
+
+  const providerMatch = path.match(/^\/api\/providers\/([^/]+)$/);
+  if (providerMatch) {
+    const id = providerMatch[1];
+    if (method === "GET") return getProvider(env, id);
+    if (method === "PUT") return updateProvider(request, env, id);
+    if (method === "DELETE") return deleteProvider(env, id);
   }
 
   // ── Future API routes ─────────────────────────────────
