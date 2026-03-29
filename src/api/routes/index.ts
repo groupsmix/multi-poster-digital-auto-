@@ -72,9 +72,14 @@ export {
 } from "./workflows";
 export {
   createReview,
+  getReview,
   listProductReviews,
   approveReview,
   rejectReview,
   requestRevision,
   listPendingReviews,
+  addReviewComment,
+  listReviewComments,
+  listProductRevisions,
+  getProductVersionHistory,
 } from "./reviews";

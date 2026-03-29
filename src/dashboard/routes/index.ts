@@ -66,6 +66,22 @@ export async function handleDashboardRequest(
     return handleDashboardReviews(env);
   }
 
+  // ── Review Detail ───────────────────────────────────────
+  const reviewDetailMatch = path.match(
+    /^\/dashboard\/reviews\/([^/]+)$/,
+  );
+  if (reviewDetailMatch) {
+    return handleDashboardReviewDetail(env, reviewDetailMatch[1]);
+  }
+
+  // ── Product Version History ─────────────────────────────
+  const productHistoryMatch = path.match(
+    /^\/dashboard\/products\/([^/]+)\/history$/,
+  );
+  if (productHistoryMatch) {
+    return handleDashboardProductHistory(env, productHistoryMatch[1]);
+  }
+
   // ── Placeholder for remaining sub-routes ────────────────
   const subRoutes = [
     "categories",
@@ -470,16 +486,26 @@ async function handleDashboardWorkflows(env: Env): Promise<Response> {
   }
 }
 
-// ── Reviews ────────────────────────────────────────────────
+// ── Reviews — Boss Review Center ──────────────────────────
 
 async function handleDashboardReviews(env: Env): Promise<Response> {
   try {
     const reviews = await env.DB.prepare(
-      `SELECT r.*, p.idea as product_idea, p.status as product_status
+      `SELECT r.*, p.idea as product_idea, p.status as product_status,
+              p.current_version, p.approved_version, p.domain_id,
+              d.name as domain_name
        FROM reviews r
        JOIN products p ON r.product_id = p.id
-       ORDER BY r.created_at DESC
-       LIMIT 50`,
+       LEFT JOIN domains d ON p.domain_id = d.id
+       ORDER BY
+         CASE r.approval_status
+           WHEN 'pending' THEN 0
+           WHEN 'revision_requested' THEN 1
+           WHEN 'rejected' THEN 2
+           WHEN 'approved' THEN 3
+         END ASC,
+         r.created_at DESC
+       LIMIT 100`,
     ).all();
 
     // Group by approval_status
@@ -491,11 +517,19 @@ async function handleDashboardReviews(env: Env): Promise<Response> {
     }
 
     const pendingCount = (byStatus["pending"] || []).length;
+    const revisionCount = (byStatus["revision_requested"] || []).length;
 
     return json({
       app: APP.NAME,
       section: "reviews",
       message: "Boss Review Center — approve, reject, or request revisions.",
+      summary: {
+        pending: pendingCount,
+        revision_requested: revisionCount,
+        rejected: (byStatus["rejected"] || []).length,
+        approved: (byStatus["approved"] || []).length,
+        total: reviews.results.length,
+      },
       reviews: reviews.results,
       by_status: byStatus,
       total: reviews.results.length,
@@ -506,16 +540,273 @@ async function handleDashboardReviews(env: Env): Promise<Response> {
         "rejected",
         "revision_requested",
       ],
+      boss_actions: {
+        approve: {
+          description: "Approve the output as-is",
+          endpoint: "POST /api/reviews/:id/approve",
+          body: "{ } (empty body for plain approve)",
+        },
+        approve_with_notes: {
+          description: "Approve but attach notes for future reference",
+          endpoint: "POST /api/reviews/:id/approve",
+          body: '{ "feedback": "Looks good, minor tweak on pricing later" }',
+        },
+        reject: {
+          description: "Reject — product is marked as rejected",
+          endpoint: "POST /api/reviews/:id/reject",
+          body: '{ "feedback": "Title is off-brand", "issues_found": "branding" }',
+        },
+        request_revision: {
+          description: "Send back for revision — creates revision record, bumps version",
+          endpoint: "POST /api/reviews/:id/revision",
+          body: '{ "feedback": "Fix the description", "regenerate_targets_json": "[\\"description\\", \\"etsy_variant\\"]" }',
+        },
+        add_comment: {
+          description: "Add a comment to the review thread",
+          endpoint: "POST /api/reviews/:id/comments",
+          body: '{ "comment": "Check the pricing again", "author_type": "boss" }',
+        },
+      },
       api: {
         list_pending: "GET /api/reviews",
+        list_by_status: "GET /api/reviews?status=rejected",
+        list_by_reviewer: "GET /api/reviews?reviewer_type=boss",
+        get_review: "GET /api/reviews/:id",
         create: "POST /api/products/:id/reviews",
         approve: "POST /api/reviews/:id/approve",
         reject: "POST /api/reviews/:id/reject",
         revision: "POST /api/reviews/:id/revision",
+        add_comment: "POST /api/reviews/:id/comments",
+        list_comments: "GET /api/reviews/:id/comments",
+        product_revisions: "GET /api/products/:id/revisions",
+        version_history: "GET /api/products/:id/version-history",
+      },
+      dashboard_links: {
+        review_detail: "/dashboard/reviews/:id",
+        product_history: "/dashboard/products/:id/history",
       },
     });
   } catch (err) {
     console.error("[dashboard/reviews]", err);
     return serverError("Failed to load reviews.");
   }
+}
+
+// ── Review Detail ────────────────────────────────────────────
+
+async function handleDashboardReviewDetail(
+  env: Env,
+  reviewId: string,
+): Promise<Response> {
+  try {
+    const review = await env.DB.prepare(
+      `SELECT r.*, p.idea as product_idea, p.status as product_status,
+              p.current_version, p.approved_version, p.domain_id,
+              d.name as domain_name
+       FROM reviews r
+       JOIN products p ON r.product_id = p.id
+       LEFT JOIN domains d ON p.domain_id = d.id
+       WHERE r.id = ?`,
+    )
+      .bind(reviewId)
+      .first();
+
+    if (!review) {
+      return notFound(`Review not found: ${reviewId}`);
+    }
+
+    // Fetch comments
+    const comments = await env.DB.prepare(
+      "SELECT * FROM review_comments WHERE review_id = ? ORDER BY created_at ASC",
+    )
+      .bind(reviewId)
+      .all();
+
+    // Fetch any revision triggered by this review
+    const revision = await env.DB.prepare(
+      "SELECT * FROM revisions WHERE review_id = ?",
+    )
+      .bind(reviewId)
+      .first();
+
+    // Fetch product variants at the review's version
+    const variants = await env.DB.prepare(
+      `SELECT pv.*, pl.name as platform_name, sc.name as social_channel_name
+       FROM product_variants pv
+       LEFT JOIN platforms pl ON pv.platform_id = pl.id
+       LEFT JOIN social_channels sc ON pv.social_channel_id = sc.id
+       WHERE pv.product_id = ? AND pv.version = ?
+       ORDER BY pv.variant_type ASC`,
+    )
+      .bind(review.product_id as string, review.version as number)
+      .all();
+
+    // Fetch prior reviews for version history context
+    const priorReviews = await env.DB.prepare(
+      `SELECT id, version, reviewer_type, approval_status, created_at
+       FROM reviews
+       WHERE product_id = ? AND id != ?
+       ORDER BY version DESC, created_at DESC`,
+    )
+      .bind(review.product_id as string, reviewId)
+      .all();
+
+    return json({
+      app: APP.NAME,
+      section: "review-detail",
+      review,
+      comments: comments.results,
+      total_comments: comments.results.length,
+      revision,
+      variants: variants.results,
+      prior_reviews: priorReviews.results,
+      available_actions: getAvailableActions(review.approval_status as string, reviewId),
+      api: {
+        approve: `POST /api/reviews/${reviewId}/approve`,
+        reject: `POST /api/reviews/${reviewId}/reject`,
+        revision: `POST /api/reviews/${reviewId}/revision`,
+        add_comment: `POST /api/reviews/${reviewId}/comments`,
+        version_history: `GET /api/products/${review.product_id}/version-history`,
+      },
+    });
+  } catch (err) {
+    console.error("[dashboard/review-detail]", err);
+    return serverError("Failed to load review detail.");
+  }
+}
+
+// ── Product Version History ──────────────────────────────────
+
+async function handleDashboardProductHistory(
+  env: Env,
+  productId: string,
+): Promise<Response> {
+  try {
+    const product = await env.DB.prepare(
+      `SELECT p.*, d.name as domain_name, c.name as category_name
+       FROM products p
+       LEFT JOIN domains d ON p.domain_id = d.id
+       LEFT JOIN categories c ON p.category_id = c.id
+       WHERE p.id = ?`,
+    )
+      .bind(productId)
+      .first();
+
+    if (!product) {
+      return notFound(`Product not found: ${productId}`);
+    }
+
+    // Get all reviews
+    const reviews = await env.DB.prepare(
+      "SELECT * FROM reviews WHERE product_id = ? ORDER BY version ASC, created_at ASC",
+    )
+      .bind(productId)
+      .all();
+
+    // Get all revisions
+    const revisions = await env.DB.prepare(
+      "SELECT * FROM revisions WHERE product_id = ? ORDER BY version_from ASC, created_at ASC",
+    )
+      .bind(productId)
+      .all();
+
+    // Build timeline entries
+    const timeline: unknown[] = [];
+
+    for (const r of reviews.results) {
+      timeline.push({
+        type: "review",
+        version: r.version,
+        status: r.approval_status,
+        reviewer_type: r.reviewer_type,
+        feedback: r.feedback,
+        created_at: r.created_at,
+        review_id: r.id,
+      });
+    }
+
+    for (const rv of revisions.results) {
+      timeline.push({
+        type: "revision",
+        version_from: rv.version_from,
+        version_to: rv.version_to,
+        reason: rv.revision_reason,
+        boss_notes: rv.boss_notes,
+        regenerate_targets: rv.regenerate_targets_json,
+        created_at: rv.created_at,
+        revision_id: rv.id,
+      });
+    }
+
+    // Sort by created_at
+    timeline.sort((a, b) => {
+      const aTime = (a as Record<string, string>).created_at;
+      const bTime = (b as Record<string, string>).created_at;
+      return aTime < bTime ? -1 : aTime > bTime ? 1 : 0;
+    });
+
+    return json({
+      app: APP.NAME,
+      section: "product-history",
+      product,
+      current_version: product.current_version,
+      approved_version: product.approved_version,
+      timeline,
+      total_reviews: reviews.results.length,
+      total_revisions: revisions.results.length,
+      api: {
+        version_history: `GET /api/products/${productId}/version-history`,
+        revisions: `GET /api/products/${productId}/revisions`,
+        reviews: `GET /api/products/${productId}/reviews`,
+      },
+    });
+  } catch (err) {
+    console.error("[dashboard/product-history]", err);
+    return serverError("Failed to load product history.");
+  }
+}
+
+/**
+ * Returns available boss actions based on review status.
+ */
+function getAvailableActions(
+  status: string,
+  reviewId: string,
+): Record<string, { endpoint: string; method: string; description: string }> {
+  const actions: Record<string, { endpoint: string; method: string; description: string }> = {};
+
+  if (status === "pending") {
+    actions.approve = {
+      endpoint: `/api/reviews/${reviewId}/approve`,
+      method: "POST",
+      description: "Approve the output (optionally with notes)",
+    };
+    actions.reject = {
+      endpoint: `/api/reviews/${reviewId}/reject`,
+      method: "POST",
+      description: "Reject the output (requires feedback)",
+    };
+    actions.request_revision = {
+      endpoint: `/api/reviews/${reviewId}/revision`,
+      method: "POST",
+      description: "Request a revision (creates new version)",
+    };
+  }
+
+  if (status === "rejected" || status === "revision_requested") {
+    actions.approve = {
+      endpoint: `/api/reviews/${reviewId}/approve`,
+      method: "POST",
+      description: "Override and approve",
+    };
+  }
+
+  // Comments are always available
+  actions.add_comment = {
+    endpoint: `/api/reviews/${reviewId}/comments`,
+    method: "POST",
+    description: "Add a review comment",
+  };
+
+  return actions;
 }
