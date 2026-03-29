@@ -46,12 +46,16 @@ export async function handleDashboardRequest(
     return handleDashboardPrompts(env);
   }
 
+  // ── AI Router ────────────────────────────────────────
+  if (path === "/dashboard/router" || path === "/dashboard/router/") {
+    return handleDashboardRouter(env);
+  }
+
   // ── Placeholder for all other sub-routes ──────────────
   const subRoutes = [
     "categories",
     "products",
     "workflows",
-    "router",
     "reviews",
     "assets",
     "publish",
@@ -230,6 +234,69 @@ async function handleDashboardSocialChannels(env: Env): Promise<Response> {
   } catch (err) {
     console.error("[dashboard/social]", err);
     return serverError("Failed to load social channels.");
+  }
+}
+
+// ── AI Router ──────────────────────────────────────────
+
+async function handleDashboardRouter(env: Env): Promise<Response> {
+  try {
+    const result = await env.DB.prepare(
+      `SELECT * FROM provider_configs
+       WHERE is_active = 1
+       ORDER BY task_lane ASC, tier ASC, priority ASC`,
+    ).all();
+
+    // Group by task lane
+    const lanes: Record<string, unknown[]> = {};
+    for (const row of result.results) {
+      const lane = row.task_lane as string;
+      if (!lanes[lane]) lanes[lane] = [];
+
+      // Resolve cooldown in-memory
+      const state = row.state as string;
+      const cooldownUntil = row.cooldown_until as string | null;
+      let effectiveState = state;
+      if (
+        (state === "cooldown" || state === "rate_limited") &&
+        cooldownUntil &&
+        new Date(cooldownUntil) <= new Date()
+      ) {
+        effectiveState = "active";
+      }
+
+      lanes[lane].push({
+        ...row,
+        effective_state: effectiveState,
+      });
+    }
+
+    return json({
+      app: APP.NAME,
+      section: "router",
+      message: "AI Router — provider states grouped by task lane.",
+      lanes,
+      lane_names: Object.keys(lanes),
+      total_providers: result.results.length,
+      api: {
+        list: "GET /api/providers",
+        get: "GET /api/providers/:id",
+        create: "POST /api/providers",
+        update: "PUT /api/providers/:id",
+        delete: "DELETE /api/providers/:id",
+        sleep: "POST /api/providers/:id/sleep",
+        wake: "POST /api/providers/:id/wake",
+        cooldown: "POST /api/providers/:id/cooldown",
+        report_error: "POST /api/providers/:id/report-error",
+        report_rate_limit: "POST /api/providers/:id/report-rate-limit",
+        lanes: "GET /api/providers/lanes",
+        lane_detail: "GET /api/providers/lanes/:lane",
+        resolve: "GET /api/providers/resolve/:lane",
+      },
+    });
+  } catch (err) {
+    console.error("[dashboard/router]", err);
+    return serverError("Failed to load AI router.");
   }
 }
 

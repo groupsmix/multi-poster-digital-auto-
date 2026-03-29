@@ -16,6 +16,7 @@ export interface Env {
 
   // ── Durable Objects ───────────────────────────────────
   WORKFLOW_COORDINATOR: DurableObjectNamespace;
+  PROVIDER_ROUTER: DurableObjectNamespace;
 
   // ── Vars (set in wrangler.toml [vars] or .dev.vars) ──
   ENVIRONMENT: string;
