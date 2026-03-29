@@ -80,6 +80,18 @@ import {
   getProductResearch,
   getResearchOutput,
   listResearchOutputs,
+  runCreator,
+  getProductCreation,
+  getCreationOutput,
+  runPlatformAdapter,
+  getProductPlatformVariants,
+  getVariantById,
+  runMarketing,
+  getProductMarketing,
+  getMarketingOutput,
+  runSocial,
+  getProductSocialVariants,
+  getSocialVariantById,
 } from "./routes";
 
 /**
@@ -324,6 +336,7 @@ export async function handleApiRequest(
   const variantMatch = path.match(/^\/api\/variants\/([^/]+)$/);
   if (variantMatch) {
     const id = variantMatch[1];
+    if (method === "GET") return getVariantById(env, id);
     if (method === "PUT") return updateVariant(request, env, id);
     if (method === "DELETE") return deleteVariant(env, id);
   }
@@ -422,6 +435,76 @@ export async function handleApiRequest(
   const researchOutputMatch = path.match(/^\/api\/research\/([^/]+)$/);
   if (researchOutputMatch && method === "GET") {
     return getResearchOutput(env, researchOutputMatch[1]);
+  }
+
+  // ── Creator AI ──────────────────────────────────────────
+  // Product creation: /api/products/:id/create
+  const productCreateMatch = path.match(/^\/api\/products\/([^/]+)\/create$/);
+  if (productCreateMatch) {
+    const productId = productCreateMatch[1];
+    if (method === "POST") return runCreator(request, env, productId);
+  }
+
+  // Product creation output: /api/products/:id/creation
+  const productCreationMatch = path.match(/^\/api\/products\/([^/]+)\/creation$/);
+  if (productCreationMatch && method === "GET") {
+    return getProductCreation(env, productCreationMatch[1]);
+  }
+
+  // Get specific creation output: GET /api/creations/:outputId
+  const creationOutputMatch = path.match(/^\/api\/creations\/([^/]+)$/);
+  if (creationOutputMatch && method === "GET") {
+    return getCreationOutput(env, creationOutputMatch[1]);
+  }
+
+  // ── Platform Adapter AI ─────────────────────────────────
+  // Adapt product for platforms: POST /api/products/:id/adapt
+  const productAdaptMatch = path.match(/^\/api\/products\/([^/]+)\/adapt$/);
+  if (productAdaptMatch && method === "POST") {
+    return runPlatformAdapter(request, env, productAdaptMatch[1]);
+  }
+
+  // Get platform variants: GET /api/products/:id/platform-variants
+  const productPlatformVariantsMatch = path.match(/^\/api\/products\/([^/]+)\/platform-variants$/);
+  if (productPlatformVariantsMatch && method === "GET") {
+    return getProductPlatformVariants(env, productPlatformVariantsMatch[1]);
+  }
+
+  // Get specific variant: GET /api/variants/:id (already exists for PUT/DELETE)
+  // Add GET to existing variant match
+
+  // ── Marketing AI ────────────────────────────────────────
+  // Product marketing: /api/products/:id/marketing
+  const productMarketingMatch = path.match(/^\/api\/products\/([^/]+)\/marketing$/);
+  if (productMarketingMatch) {
+    const productId = productMarketingMatch[1];
+    if (method === "POST") return runMarketing(request, env, productId);
+    if (method === "GET") return getProductMarketing(env, productId);
+  }
+
+  // Get specific marketing output: GET /api/marketing/:outputId
+  const marketingOutputMatch = path.match(/^\/api\/marketing\/([^/]+)$/);
+  if (marketingOutputMatch && method === "GET") {
+    return getMarketingOutput(env, marketingOutputMatch[1]);
+  }
+
+  // ── Social AI ───────────────────────────────────────────
+  // Product social: POST /api/products/:id/social
+  const productSocialMatch = path.match(/^\/api\/products\/([^/]+)\/social$/);
+  if (productSocialMatch && method === "POST") {
+    return runSocial(request, env, productSocialMatch[1]);
+  }
+
+  // Get social variants: GET /api/products/:id/social-variants
+  const productSocialVariantsMatch = path.match(/^\/api\/products\/([^/]+)\/social-variants$/);
+  if (productSocialVariantsMatch && method === "GET") {
+    return getProductSocialVariants(env, productSocialVariantsMatch[1]);
+  }
+
+  // Get specific social variant: GET /api/social-variants/:id
+  const socialVariantMatch = path.match(/^\/api\/social-variants\/([^/]+)$/);
+  if (socialVariantMatch && method === "GET") {
+    return getSocialVariantById(env, socialVariantMatch[1]);
   }
 
   // ── Exports ─────────────────────────────────────────────
