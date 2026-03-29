@@ -122,6 +122,12 @@ export {
   getSocialVariantById,
 } from "./social";
 export {
+  runReviewer,
+  getReviewerOutput,
+  triggerRegeneration,
+  getRegenerationHistory,
+} from "./reviewer";
+export {
   getDashboard,
   getProviderUsage,
   getRoutingAudit,
